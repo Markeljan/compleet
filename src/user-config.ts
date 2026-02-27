@@ -1,15 +1,11 @@
 import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ProviderName } from "./types";
+import type { AuthMethod } from "./types";
 
 export interface UserConfig {
-  provider?: ProviderName;
-  apiKey?: string;
-  baseUrl?: string;
-  model?: string;
-  codexBaseUrl?: string;
-  codexModel?: string;
+  authMethod?: AuthMethod;
+  openaiApiKey?: string;
 }
 
 export function getUserConfigPath(): string {
@@ -29,20 +25,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
 
   try {
     const raw = await readFile(path, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return {};
-    }
-
-    const obj = parsed as Record<string, unknown>;
-    return {
-      provider: obj.provider === "codex" || obj.provider === "openai" ? obj.provider : undefined,
-      apiKey: typeof obj.apiKey === "string" ? obj.apiKey : undefined,
-      baseUrl: typeof obj.baseUrl === "string" ? obj.baseUrl : undefined,
-      model: typeof obj.model === "string" ? obj.model : undefined,
-      codexBaseUrl: typeof obj.codexBaseUrl === "string" ? obj.codexBaseUrl : undefined,
-      codexModel: typeof obj.codexModel === "string" ? obj.codexModel : undefined,
-    };
+    return parseUserConfig(raw);
   } catch (error) {
     if (isFileMissing(error)) {
       return {};
@@ -70,6 +53,54 @@ export async function saveUserConfig(config: UserConfig): Promise<string> {
   }
 
   return path;
+}
+
+function parseUserConfig(raw: string): UserConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return {};
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {};
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const authMethod = normalizeAuthMethod(obj.authMethod);
+  const openaiApiKey = typeof obj.openaiApiKey === "string" ? obj.openaiApiKey : undefined;
+
+  if (authMethod || openaiApiKey) {
+    return {
+      authMethod: authMethod ?? (openaiApiKey ? "openai-api-key" : undefined),
+      openaiApiKey,
+    };
+  }
+
+  // Backward-compatible migration from v0.1.0 provider schema.
+  const legacyProvider = obj.provider;
+  const legacyApiKey = typeof obj.apiKey === "string" ? obj.apiKey : undefined;
+
+  if (legacyProvider === "codex") {
+    return { authMethod: "codex-oauth" };
+  }
+
+  if (legacyProvider === "openai" || legacyApiKey) {
+    return {
+      authMethod: "openai-api-key",
+      openaiApiKey: legacyApiKey,
+    };
+  }
+
+  return {};
+}
+
+function normalizeAuthMethod(value: unknown): AuthMethod | undefined {
+  if (value === "codex-oauth" || value === "openai-api-key") {
+    return value;
+  }
+  return undefined;
 }
 
 function isFileMissing(error: unknown): boolean {

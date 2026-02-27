@@ -1,15 +1,12 @@
 #!/usr/bin/env bun
 import { basename } from "node:path";
-import type { AuthModeArgs } from "./args";
-import { parseArgs, ArgParseError, helpText } from "./args";
+import { parseArgs, ArgParseError, helpText, type SetupModeArgs } from "./args";
 import { runCodexCliAuthAction } from "./codex-auth";
-import { handleConfigCommand } from "./config-command";
-import { askChoice, askLine, canPromptInteractively, confirm } from "./interactive";
+import { askLine, canPromptInteractively, confirm, selectWithArrows, type SelectOption } from "./interactive";
 import { generatePromptResponse, generateSuggestion } from "./openai";
-import { isSupportedInitShell, renderShellInit } from "./shell";
-import { installShellIntegration } from "./shell-install";
-import type { RuntimeContext, Suggestion } from "./types";
-import { loadUserConfig, updateUserConfig } from "./user-config";
+import { installShellIntegration, isShellIntegrationInstalled } from "./shell-install";
+import type { AuthMethod, RuntimeContext, Suggestion } from "./types";
+import { loadUserConfig, saveUserConfig } from "./user-config";
 import { APP_BUILD_TIME, VERSION } from "./version";
 
 function shellNameFromEnv(): string {
@@ -50,163 +47,144 @@ function printSuggestionHuman(suggestion: Suggestion, explain: boolean) {
   process.stdout.write(`${suggestion.command}\n`);
 }
 
-async function resolveInitShell(explicitShell?: string): Promise<"zsh"> {
-  if (explicitShell) {
-    if (!isSupportedInitShell(explicitShell)) {
-      throw new Error(`Unsupported shell for init: ${explicitShell}. Supported: zsh`);
-    }
-    return explicitShell;
+function printSuccess(message: string) {
+  if (process.stdout.isTTY) {
+    console.log(`\x1b[32m${message}\x1b[0m`);
+    return;
   }
-
-  const detected = shellNameFromEnv();
-  if (isSupportedInitShell(detected)) {
-    return detected;
-  }
-
-  if (!canPromptInteractively()) {
-    throw new Error(`Could not auto-detect a supported shell from SHELL="${detected}". Use: tcomp init --shell zsh`);
-  }
-
-  return (await askChoice("Shell integration to print", ["zsh"], "zsh")) as "zsh";
+  console.log(message);
 }
 
-async function handleAuthCommand(args: AuthModeArgs): Promise<number> {
-  if (args.interactive) {
-    return await runAuthWizard(args.provider);
+function setupRequirementErrors(): string[] {
+  const errors: string[] = [];
+
+  if (!process.versions.bun) {
+    errors.push("Bun runtime is required. Install Bun: https://bun.sh/docs/installation");
   }
 
-  if (!args.provider) {
-    if (!canPromptInteractively()) {
-      console.error("Auth setup needs a provider. Use --provider codex|openai, or run `tcomp auth` interactively.");
-      return 1;
-    }
-    return await runAuthWizard(undefined);
+  const shell = shellNameFromEnv();
+  if (shell !== "zsh") {
+    errors.push(`zsh is required for tcomp setup and shell integration. Detected SHELL=\"${shell}\".`);
   }
 
-  if (args.provider === "codex") {
-    return await handleCodexAuth(args);
-  }
-
-  return await handleOpenAIAuth(args);
+  return errors;
 }
 
-async function runAuthWizard(initialProvider?: "openai" | "codex"): Promise<number> {
+function defaultAuthMethod(config: Awaited<ReturnType<typeof loadUserConfig>>): AuthMethod {
+  if (config.authMethod === "openai-api-key" || config.authMethod === "codex-oauth") {
+    return config.authMethod;
+  }
+  return "codex-oauth";
+}
+
+async function chooseAuthMethod(current: AuthMethod): Promise<AuthMethod> {
+  const options: Array<SelectOption<AuthMethod>> = [
+    { label: "Codex OAuth", value: "codex-oauth" },
+    { label: "OpenAI API key", value: "openai-api-key" },
+  ];
+
+  const defaultIndex = current === "openai-api-key" ? 1 : 0;
+  return await selectWithArrows("Setup authentication:", options, defaultIndex);
+}
+
+async function runSetupFlow(options: {
+  showWelcome: boolean;
+  legacyAlias?: SetupModeArgs["legacyAlias"];
+}): Promise<number> {
   if (!canPromptInteractively()) {
-    console.error("Auth wizard requires an interactive terminal.");
-    console.error("Examples:");
-    console.error("  tcomp auth --provider codex");
-    console.error("  tcomp auth --provider openai --api-key <key>");
+    console.error("Setup requires an interactive terminal. Run `tcomp setup` in a TTY.");
     return 1;
+  }
+
+  if (options.legacyAlias) {
+    console.error(`"${options.legacyAlias}" has been replaced by "tcomp setup".`);
+  }
+
+  const requirementErrors = setupRequirementErrors();
+  if (requirementErrors.length > 0) {
+    for (const message of requirementErrors) {
+      console.error(message);
+    }
+    return 1;
+  }
+
+  if (options.showWelcome) {
+    console.log("Welcome to tcomp.");
+    console.log("First-time setup configures auth and optional zsh shell integration.");
+  }
+
+  const shellInstalled = await isShellIntegrationInstalled("zsh");
+  if (!shellInstalled) {
+    const shouldInstallShell = await confirm(
+      "Install zsh shell integration + completions now? (recommended)",
+      true,
+    );
+
+    if (shouldInstallShell) {
+      const installResult = await installShellIntegration("zsh");
+      if (installResult.updated) {
+        printSuccess(`Installed tcomp shell integration in ${installResult.path}`);
+      } else {
+        printSuccess(`tcomp shell integration already installed in ${installResult.path}`);
+      }
+      console.log(`Run: source ${installResult.path}`);
+    } else {
+      console.log("Skipped shell integration install.");
+    }
   }
 
   const config = await loadUserConfig();
-  const provider = (await askChoice(
-    "Auth provider",
-    ["codex", "openai"],
-    initialProvider ?? config.provider ?? "codex",
-  )) as "codex" | "openai";
+  const method = await chooseAuthMethod(defaultAuthMethod(config));
 
-  if (provider === "codex") {
-    const action = (await askChoice("Codex auth action", ["login", "status", "logout"], "login")) as
-      | "login"
-      | "status"
-      | "logout";
+  if (method === "codex-oauth") {
+    const code = await runCodexCliAuthAction("login");
+    if (code !== 0) {
+      return code;
+    }
 
-    return await handleCodexAuth({
-      mode: "auth",
-      provider,
-      action,
-      interactive: false,
-      setDefault: true,
-    });
+    const path = await saveUserConfig({ authMethod: "codex-oauth" });
+    printSuccess(`Saved setup to ${path}`);
+    printSuccess("Setup complete.");
+    return 0;
   }
 
-  const apiKey = (await askLine("OpenAI API key (input visible): ")).trim();
+  const apiKey = (await askLine("Enter OpenAI API key (input visible): ")).trim();
   if (!apiKey) {
     console.error("No API key provided.");
     return 1;
   }
 
-  const setDefault = await confirm("Set OpenAI as default provider?", config.provider !== "codex");
-  return await handleOpenAIAuth({
-    mode: "auth",
-    provider: "openai",
-    apiKey,
-    interactive: false,
-    setDefault,
+  const path = await saveUserConfig({
+    authMethod: "openai-api-key",
+    openaiApiKey: apiKey,
   });
+  printSuccess(`Saved setup to ${path}`);
+  printSuccess("Setup complete.");
+  return 0;
 }
 
-async function handleCodexAuth(args: AuthModeArgs): Promise<number> {
-  const action = args.action ?? "login";
-  const code = await runCodexCliAuthAction(action);
+async function hasCompletedSetup(): Promise<boolean> {
+  const config = await loadUserConfig();
+  if (config.authMethod === "codex-oauth") {
+    return true;
+  }
 
+  if (config.authMethod === "openai-api-key" && Boolean(config.openaiApiKey?.trim())) {
+    return true;
+  }
+
+  return false;
+}
+
+async function ensureSetupBeforeSuggestion(): Promise<void> {
+  if (await hasCompletedSetup()) {
+    return;
+  }
+
+  const code = await runSetupFlow({ showWelcome: true });
   if (code !== 0) {
-    return code;
+    process.exit(code);
   }
-
-  const patch: Parameters<typeof updateUserConfig>[0] = {};
-  if (args.setDefault !== false) {
-    patch.provider = "codex";
-  }
-  if (args.model) {
-    patch.codexModel = args.model.trim();
-  }
-  if (args.baseUrl) {
-    patch.codexBaseUrl = args.baseUrl.trim().replace(/\/+$/, "");
-  }
-
-  if (Object.keys(patch).length > 0) {
-    try {
-      const path = await updateUserConfig(patch);
-      if (action === "login" && args.setDefault !== false) {
-        console.error(`Saved Codex defaults in ${path}`);
-      }
-    } catch {
-      // best effort
-    }
-  }
-
-  return 0;
-}
-
-async function handleOpenAIAuth(args: AuthModeArgs): Promise<number> {
-  if (args.action === "status" || args.action === "logout") {
-    console.error(`OpenAI auth does not support "${args.action}" here. Use "tcomp auth" or pass --api-key.`);
-    return 1;
-  }
-
-  let apiKey = args.apiKey?.trim();
-  if (!apiKey) {
-    if (!canPromptInteractively()) {
-      console.error("Missing OpenAI API key. Use `tcomp auth --provider openai --api-key <key>`.");
-      return 1;
-    }
-    apiKey = (await askLine("OpenAI API key (input visible): ")).trim();
-  }
-
-  if (!apiKey) {
-    console.error("No API key provided.");
-    return 1;
-  }
-
-  const patch: Parameters<typeof updateUserConfig>[0] = {
-    apiKey,
-  };
-
-  if (args.setDefault !== false) {
-    patch.provider = "openai";
-  }
-  if (args.model) {
-    patch.model = args.model.trim();
-  }
-  if (args.baseUrl) {
-    patch.baseUrl = args.baseUrl.trim().replace(/\/+$/, "");
-  }
-
-  const path = await updateUserConfig(patch);
-  console.error(`Saved OpenAI auth in ${path}`);
-  return 0;
 }
 
 async function main() {
@@ -236,62 +214,24 @@ async function main() {
     return;
   }
 
-  if (args.mode === "init") {
-    const shell = await resolveInitShell(args.shell);
-    if (args.install) {
-      const result = await installShellIntegration(shell, "tcomp");
-      if (result.updated) {
-        console.log(`Installed tcomp shell integration in ${result.path}`);
-        console.log(`Run: source ${result.path}`);
-      } else {
-        console.log(`tcomp shell integration already installed in ${result.path}`);
-      }
-      return;
-    }
-    process.stdout.write(renderShellInit(shell));
-    return;
-  }
-
-  if (args.mode === "auth") {
-    const code = await handleAuthCommand(args);
+  if (args.mode === "setup") {
+    const code = await runSetupFlow({
+      showWelcome: true,
+      legacyAlias: args.legacyAlias,
+    });
     process.exit(code);
   }
 
-  if (args.mode === "config") {
-    const code = await handleConfigCommand(args);
-    process.exit(code);
-  }
+  await ensureSetupBeforeSuggestion();
 
   const context = buildRuntimeContext();
   if (args.promptMode) {
-    const response = await generatePromptResponse(args.prompt, context, {
-      provider: args.provider,
-      model: args.model,
-      baseUrl: args.baseUrl,
-      apiKey: args.apiKey,
-    });
-
-    if (args.json) {
-      console.log(JSON.stringify({ response }, null, 2));
-      return;
-    }
-
+    const response = await generatePromptResponse(args.prompt, context);
     console.log(response);
     return;
   }
 
-  const suggestion = await generateSuggestion(args.prompt, context, {
-    provider: args.provider,
-    model: args.model,
-    baseUrl: args.baseUrl,
-    apiKey: args.apiKey,
-  });
-
-  if (args.json) {
-    console.log(JSON.stringify(suggestion, null, 2));
-    return;
-  }
-
+  const suggestion = await generateSuggestion(args.prompt, context);
   printSuggestionHuman(suggestion, args.explain);
 }
 

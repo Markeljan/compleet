@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { renderShellIntegration } from "./shell";
 
 type SupportedShell = "zsh";
 
@@ -9,7 +10,7 @@ interface InstallResult {
   updated: boolean;
 }
 
-export async function installShellIntegration(shell: SupportedShell, command = "tcomp"): Promise<InstallResult> {
+export async function installShellIntegration(shell: SupportedShell): Promise<InstallResult> {
   if (shell !== "zsh") {
     throw new Error(`Unsupported shell for install: ${shell}`);
   }
@@ -17,9 +18,8 @@ export async function installShellIntegration(shell: SupportedShell, command = "
   const rcPath = getZshRcPath();
   const markerStart = "# >>> tcomp integration >>>";
   const markerEnd = "# <<< tcomp integration <<<";
-  const block = `${markerStart}
-eval "$(${command} init)"
-${markerEnd}`;
+  const integration = renderShellIntegration("zsh").trimEnd();
+  const block = `${markerStart}\n${integration}\n${markerEnd}`;
 
   let existing = "";
   try {
@@ -38,6 +38,30 @@ ${markerEnd}`;
   await mkdir(dirname(rcPath), { recursive: true });
   await writeFile(rcPath, normalizeTrailingNewline(next), "utf8");
   return { path: rcPath, updated: true };
+}
+
+export async function isShellIntegrationInstalled(shell: SupportedShell): Promise<boolean> {
+  if (shell !== "zsh") {
+    return false;
+  }
+
+  const rcPath = getZshRcPath();
+  const markerStart = "# >>> tcomp integration >>>";
+  const markerEnd = "# <<< tcomp integration <<<";
+
+  let existing = "";
+  try {
+    existing = await readFile(rcPath, "utf8");
+  } catch (error) {
+    if (isFileMissing(error)) {
+      return false;
+    }
+    throw error;
+  }
+
+  const startIndex = existing.indexOf(markerStart);
+  const endIndex = existing.indexOf(markerEnd);
+  return startIndex >= 0 && endIndex > startIndex;
 }
 
 function getZshRcPath(): string {
@@ -77,4 +101,3 @@ function isFileMissing(error: unknown): boolean {
     (error as { code?: string }).code === "ENOENT"
   );
 }
-

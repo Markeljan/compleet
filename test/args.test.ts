@@ -38,28 +38,21 @@ describe("parseArgs", () => {
     expect(parsed.prompt).toBe("hey how are you");
   });
 
-  test("parses control commands only when first token matches", () => {
-    const initParsed = parseArgs(["init"]);
-    expect(initParsed.mode).toBe("init");
-
-    const promptParsed = expectSuggest(parseArgs(["hey", "init"]));
-    expect(promptParsed.prompt).toBe("hey init");
+  test("parses setup command", () => {
+    const parsed = parseArgs(["setup"]);
+    expect(parsed.mode).toBe("setup");
   });
 
-  test("returns config wizard when no config args are provided", () => {
-    const parsed = parseArgs(["config"]);
-    expect(parsed.mode).toBe("config");
-    if (parsed.mode === "config") {
-      expect(parsed.action).toBe("wizard");
-    }
-  });
-
-  test("returns interactive auth mode by default", () => {
+  test("maps legacy setup aliases", () => {
     const parsed = parseArgs(["auth"]);
-    expect(parsed.mode).toBe("auth");
-    if (parsed.mode === "auth") {
-      expect(parsed.interactive).toBe(true);
+    expect(parsed.mode).toBe("setup");
+    if (parsed.mode === "setup") {
+      expect(parsed.legacyAlias).toBe("auth");
     }
+  });
+
+  test("rejects removed json flag", () => {
+    expect(() => parseArgs(["--json", "hello"])).toThrow(ArgParseError);
   });
 
   test("throws on unknown options", () => {
@@ -71,6 +64,8 @@ describe("helpText", () => {
   test("uses tcomp branding and no cli.js references", () => {
     const help = helpText();
     expect(help).toContain("tcomp - AI terminal command helper");
+    expect(help).toContain("tcomp setup");
+    expect(help).not.toContain("--json");
     expect(help).not.toContain("cli.js");
   });
 });

@@ -1,5 +1,5 @@
 export type RiskLevel = "low" | "medium" | "high";
-export type ProviderName = "openai" | "codex";
+export type AuthMethod = "codex-oauth" | "openai-api-key";
 
 export interface Suggestion {
   command: string;
@@ -13,11 +13,4 @@ export interface RuntimeContext {
   shell: string;
   platform: NodeJS.Platform;
   homeDir: string;
-}
-
-export interface ProviderConfig {
-  provider: ProviderName;
-  model: string;
-  baseUrl?: string;
-  apiKey?: string;
 }

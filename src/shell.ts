@@ -1,23 +1,18 @@
 type SupportedShell = "zsh";
 
-export function isSupportedInitShell(value: string): value is SupportedShell {
+export function isSupportedShell(value: string): value is SupportedShell {
   return value === "zsh";
 }
 
-export function renderShellInit(shell: SupportedShell): string {
+export function renderShellIntegration(shell: SupportedShell): string {
   switch (shell) {
     case "zsh":
-      return renderZshInit();
+      return renderZshIntegration();
   }
 }
 
-function renderZshInit(): string {
+function renderZshIntegration(): string {
   return String.raw`# tcomp zsh integration
-# Usage:
-#   eval "$(tcomp init)"
-# Then run:
-#   tcomp open zshrc using vscode
-#
 # Commands are prefilled into your next zsh prompt (BUFFER) so you can
 # inspect/edit and press Enter manually. They are not auto-executed.
 
@@ -71,9 +66,7 @@ _tcomp_complete() {
   local state
   local -a commands
   commands=(
-    'auth:authentication wizard/status'
-    'config:configuration wizard/defaults'
-    'init:print or install shell integration'
+    'setup:run interactive setup'
     'help:show help'
     'version:show version'
   )
@@ -88,44 +81,11 @@ _tcomp_complete() {
       return
       ;;
     args)
-      case $words[2] in
-        auth)
-          _arguments \
-            '--provider[provider]:provider:(codex openai)' \
-            '--status[show provider status]' \
-            '--login[start login flow]' \
-            '--logout[logout codex auth]' \
-            '--api-key[OpenAI API key]:api key:' \
-            '--model[override model]:model:' \
-            '--base-url[override base URL]:url:' \
-            '--no-default[do not change default provider]'
-          return
-          ;;
-        config)
-          _arguments \
-            '--show[show config]' \
-            '--path[show config file path]' \
-            '--reset[reset config]' \
-            '--provider[set default provider]:provider:(codex openai)'
-          return
-          ;;
-        init)
-          _arguments \
-            '--shell[shell]:shell:(zsh)' \
-            '--install[write init block to ~/.zshrc]'
-          return
-          ;;
-      esac
       _arguments -s \
-        '--provider[inference provider]:provider:(codex openai)' \
         '--prompt[general assistant response]' \
         '-p[general assistant response]' \
         '--explain[show command explanation]' \
-        '-e[show command explanation]' \
-        '--json[print JSON output]' \
-        '--model[override model]:model:' \
-        '--base-url[override base URL]:url:' \
-        '--api-key[override API key]:api key:'
+        '-e[show command explanation]'
       return
       ;;
   esac
@@ -145,7 +105,7 @@ tcomp() {
   fi
 
   case "$1" in
-    init|auth|config|help|version|suggest|-h|--help|-v|--version)
+    setup|auth|config|init|help|version|suggest|-h|--help|-v|--version)
       command "$_tcomp_bin" "$@"
       return $?
       ;;
@@ -154,7 +114,7 @@ tcomp() {
   # Passthrough modes that should print output directly.
   for arg in "$@"; do
     case "$arg" in
-      --prompt|-p|--json)
+      --prompt|-p)
         command "$_tcomp_bin" "$@"
         return $?
         ;;

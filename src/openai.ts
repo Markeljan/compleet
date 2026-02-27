@@ -1,8 +1,7 @@
-import * as readline from "node:readline";
 import { buildUserPrompt, loadSystemPrompt } from "./prompt";
 import { ensureCodexChatGPTAuth } from "./codex-auth";
-import type { ProviderConfig, ProviderName, RiskLevel, RuntimeContext, Suggestion } from "./types";
-import { getUserConfigPath, loadUserConfig, saveUserConfig, updateUserConfig } from "./user-config";
+import type { RiskLevel, RuntimeContext, Suggestion } from "./types";
+import { loadUserConfig } from "./user-config";
 
 interface ChatCompletionResponse {
   choices?: Array<{
@@ -20,97 +19,51 @@ interface ResponsesApiResponse {
   error?: { message?: string };
 }
 
-interface ResolvedOpenAIProviderConfig {
-  provider: "openai";
+interface ResolvedOpenAIConfig {
+  authMethod: "openai-api-key";
   apiKey: string;
-  baseUrl: string;
-  model: string;
 }
 
-interface ResolvedCodexProviderConfig {
-  provider: "codex";
+interface ResolvedCodexConfig {
+  authMethod: "codex-oauth";
   accessToken: string;
-  baseUrl: string;
-  model: string;
 }
 
-type ResolvedProviderConfig = ResolvedOpenAIProviderConfig | ResolvedCodexProviderConfig;
+type ResolvedRuntimeConfig = ResolvedOpenAIConfig | ResolvedCodexConfig;
+
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const OPENAI_MODEL = "gpt-4o-mini";
+const CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
+const CODEX_MODEL = "gpt-5.3-codex";
+
 const GENERAL_ASSISTANT_SYSTEM_PROMPT =
   "You are a concise, helpful assistant. Answer directly in plain text unless asked for another format.";
 
-export async function resolveProviderConfig(
-  overrides?: Partial<ProviderConfig>,
-): Promise<ResolvedProviderConfig> {
+export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
   const stored = await loadUserConfig();
-  const provider = resolveProviderName(overrides?.provider, stored.provider);
+  const authMethod = stored.authMethod;
 
-  if (provider === "codex") {
-    const auth = await ensureCodexChatGPTAuth(Boolean(process.stdin.isTTY));
-    const baseUrl =
-      overrides?.baseUrl ??
-      process.env.TCOMP_CODEX_BASE_URL ??
-      stored.codexBaseUrl ??
-      "https://chatgpt.com/backend-api/codex";
-    const model =
-      overrides?.model ??
-      process.env.TCOMP_CODEX_MODEL ??
-      stored.codexModel ??
-      "gpt-5.3-codex";
+  if (authMethod === "openai-api-key") {
+    const apiKey = stored.openaiApiKey?.trim();
+    if (!apiKey) {
+      throw new Error('OpenAI API key is missing from setup. Run "tcomp setup" to configure it.');
+    }
 
     return {
-      provider,
-      accessToken: auth.accessToken,
-      baseUrl: baseUrl.replace(/\/+$/, ""),
-      model,
+      authMethod,
+      apiKey,
     };
   }
 
-  let apiKey =
-    overrides?.apiKey ??
-    process.env.TCOMP_API_KEY ??
-    process.env.OPENAI_API_KEY ??
-    stored.apiKey ??
-    "";
-  const baseUrl =
-    overrides?.baseUrl ??
-    process.env.TCOMP_BASE_URL ??
-    process.env.OPENAI_BASE_URL ??
-    stored.baseUrl ??
-    "https://api.openai.com/v1";
-  const model =
-    overrides?.model ??
-    process.env.TCOMP_MODEL ??
-    process.env.OPENAI_MODEL ??
-    stored.model ??
-    "gpt-4o-mini";
-
-  if (!apiKey) {
-    apiKey = await promptForOpenAIApiKeyOnFirstRun({ baseUrl, model });
+  if (authMethod === "codex-oauth") {
+    const auth = await ensureCodexChatGPTAuth(Boolean(process.stdin.isTTY));
+    return {
+      authMethod,
+      accessToken: auth.accessToken,
+    };
   }
 
-  return {
-    provider,
-    apiKey,
-    baseUrl: baseUrl.replace(/\/+$/, ""),
-    model,
-  };
-}
-
-function resolveProviderName(
-  overrideProvider: ProviderName | undefined,
-  storedProvider: ProviderName | undefined,
-): ProviderName {
-  const envProvider = process.env.TCOMP_PROVIDER;
-  if (overrideProvider === "openai" || overrideProvider === "codex") {
-    return overrideProvider;
-  }
-  if (envProvider === "openai" || envProvider === "codex") {
-    return envProvider;
-  }
-  if (storedProvider === "openai" || storedProvider === "codex") {
-    return storedProvider;
-  }
-  return "openai";
+  throw new Error('Setup is required before using tcomp. Run "tcomp setup".');
 }
 
 function normalizeContent(content: string | Array<{ type?: string; text?: string }> | undefined): string {
@@ -188,13 +141,13 @@ function parseSuggestion(raw: string): Suggestion {
 }
 
 async function requestChatCompletion(
-  config: ResolvedOpenAIProviderConfig,
+  apiKey: string,
   systemPrompt: string,
   userPrompt: string,
   includeResponseFormat: boolean,
 ): Promise<string> {
   const payload: Record<string, unknown> = {
-    model: config.model,
+    model: OPENAI_MODEL,
     temperature: 0,
     messages: [
       { role: "system", content: systemPrompt },
@@ -206,11 +159,11 @@ async function requestChatCompletion(
     payload.response_format = { type: "json_object" };
   }
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(45_000),
@@ -237,12 +190,12 @@ async function requestChatCompletion(
 }
 
 async function requestCodexResponses(
-  config: ResolvedCodexProviderConfig,
+  accessToken: string,
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
   const payload = {
-    model: config.model,
+    model: CODEX_MODEL,
     stream: true,
     store: false,
     instructions: systemPrompt,
@@ -254,11 +207,11 @@ async function requestCodexResponses(
     ],
   };
 
-  const response = await fetch(`${config.baseUrl}/responses`, {
+  const response = await fetch(`${CODEX_BASE_URL}/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       Accept: "text/event-stream, application/json",
     },
     body: JSON.stringify(payload),
@@ -277,7 +230,7 @@ async function requestCodexResponses(
     const errorMessage = json?.error?.message ?? text;
     if (response.status === 401 || response.status === 403) {
       throw new Error(
-        `Codex auth failed (${response.status}). Run "tcomp auth --provider codex" to refresh your ChatGPT login, then try again.`,
+        `Codex auth failed (${response.status}). Run "tcomp setup" and choose "Codex OAuth", then try again.`,
       );
     }
     throw new Error(`Codex API error (${response.status}): ${errorMessage}`);
@@ -476,69 +429,11 @@ function isResponseFormatUnsupported(error: unknown): boolean {
   return msg.includes("response_format") && (msg.includes("unsupported") || msg.includes("unknown"));
 }
 
-async function promptForOpenAIApiKeyOnFirstRun(defaults: { baseUrl: string; model: string }): Promise<string> {
-  if (!process.stdin.isTTY) {
-    throw new Error(
-      "Missing API key. Run tcomp in a TTY to complete first-run setup, or set TCOMP_API_KEY / OPENAI_API_KEY.",
-    );
-  }
-
-  const configPath = getUserConfigPath();
-  console.error("No API key configured for tcomp (OpenAI provider).");
-  console.error(`First-run setup will save your key to: ${configPath}`);
-
-  const apiKey = (await askQuestion("Enter OpenAI API key: ")).trim();
-  if (!apiKey) {
-    throw new Error(
-      "No API key provided. Set TCOMP_API_KEY / OPENAI_API_KEY or rerun and complete first-run setup.",
-    );
-  }
-
-  try {
-    await updateUserConfig({
-      provider: "openai",
-      apiKey,
-      baseUrl: defaults.baseUrl,
-      model: defaults.model,
-    });
-    console.error("Saved API key for future runs.");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Warning: failed to save config (${message}). Continuing with this session only.`);
-  }
-
-  return apiKey;
-}
-
-async function askQuestion(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stderr,
-    terminal: Boolean(process.stdin.isTTY),
-  });
-
-  try {
-    return await new Promise<string>((resolve) => {
-      rl.question(question, resolve);
-    });
-  } finally {
-    rl.close();
-  }
-}
-
-export async function setDefaultProvider(provider: ProviderName): Promise<string> {
-  return saveUserConfig({
-    ...(await loadUserConfig()),
-    provider,
-  });
-}
-
 export async function generateSuggestion(
   request: string,
   context: RuntimeContext,
-  providerOverrides?: Partial<ProviderConfig>,
 ): Promise<Suggestion> {
-  const config = await resolveProviderConfig(providerOverrides);
+  const config = await resolveRuntimeConfig();
   const [systemPrompt, userPrompt] = await Promise.all([
     loadSystemPrompt(),
     Promise.resolve(buildUserPrompt(request, context)),
@@ -546,8 +441,8 @@ export async function generateSuggestion(
 
   let raw: string;
 
-  if (config.provider === "codex") {
-    raw = await requestCodexResponses(config, systemPrompt, userPrompt);
+  if (config.authMethod === "codex-oauth") {
+    raw = await requestCodexResponses(config.accessToken, systemPrompt, userPrompt);
     if (process.env.TCOMP_DEBUG_RAW === "1") {
       console.error("DEBUG raw codex response:");
       console.error(raw);
@@ -556,12 +451,12 @@ export async function generateSuggestion(
   }
 
   try {
-    raw = await requestChatCompletion(config, systemPrompt, userPrompt, true);
+    raw = await requestChatCompletion(config.apiKey, systemPrompt, userPrompt, true);
   } catch (error) {
     if (!isResponseFormatUnsupported(error)) {
       throw error;
     }
-    raw = await requestChatCompletion(config, systemPrompt, userPrompt, false);
+    raw = await requestChatCompletion(config.apiKey, systemPrompt, userPrompt, false);
   }
 
   return parseSuggestion(raw);
@@ -570,9 +465,8 @@ export async function generateSuggestion(
 export async function generatePromptResponse(
   request: string,
   context: RuntimeContext,
-  providerOverrides?: Partial<ProviderConfig>,
 ): Promise<string> {
-  const config = await resolveProviderConfig(providerOverrides);
+  const config = await resolveRuntimeConfig();
   const userPrompt = `User prompt: ${request}
 
 Runtime context:
@@ -581,9 +475,9 @@ Runtime context:
 - platform: ${context.platform}`;
 
   const raw =
-    config.provider === "codex"
-      ? await requestCodexResponses(config, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt)
-      : await requestChatCompletion(config, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt, false);
+    config.authMethod === "codex-oauth"
+      ? await requestCodexResponses(config.accessToken, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt)
+      : await requestChatCompletion(config.apiKey, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt, false);
 
   return raw.trim();
 }

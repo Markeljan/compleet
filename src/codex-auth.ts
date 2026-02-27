@@ -34,7 +34,7 @@ export async function loadCodexChatGPTAuth(): Promise<CodexChatGPTAuth> {
   } catch (error) {
     if (isFileMissing(error)) {
       throw new Error(
-        `Codex auth not found at ${authPath}. Run "tcomp auth --provider codex" first.`,
+        `Codex auth not found at ${authPath}. Run "tcomp setup" and choose "Codex OAuth" first.`,
       );
     }
     throw error;
@@ -58,7 +58,7 @@ export async function loadCodexChatGPTAuth(): Promise<CodexChatGPTAuth> {
 
   if (!accessToken) {
     throw new Error(
-      `Codex auth file does not contain a ChatGPT access token. Run "tcomp auth --provider codex".`,
+      `Codex auth file does not contain a ChatGPT access token. Run "tcomp setup" and choose "Codex OAuth".`,
     );
   }
 

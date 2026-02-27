@@ -34,18 +34,56 @@ describe("user config and codex auth paths", () => {
 
   test("saveUserConfig and loadUserConfig round-trip", async () => {
     const savedPath = await saveUserConfig({
-      provider: "codex",
-      codexModel: "gpt-5.3-codex",
-      codexBaseUrl: "https://chatgpt.com/backend-api/codex",
+      authMethod: "codex-oauth",
     });
 
     expect(savedPath).toBe(getUserConfigPath());
     expect(savedPath).toContain(join("xdg", "terminal-complete", "config.json"));
 
     const loaded = await loadUserConfig();
-    expect(loaded.provider).toBe("codex");
-    expect(loaded.codexModel).toBe("gpt-5.3-codex");
-    expect(loaded.codexBaseUrl).toBe("https://chatgpt.com/backend-api/codex");
+    expect(loaded.authMethod).toBe("codex-oauth");
+    expect(loaded.openaiApiKey).toBeUndefined();
+  });
+
+  test("loadUserConfig migrates legacy openai fields", async () => {
+    const configPath = getUserConfigPath();
+    await mkdir(join(sandboxDir, "xdg", "terminal-complete"), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify(
+        {
+          provider: "openai",
+          apiKey: "legacy-key",
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const loaded = await loadUserConfig();
+    expect(loaded.authMethod).toBe("openai-api-key");
+    expect(loaded.openaiApiKey).toBe("legacy-key");
+  });
+
+  test("loadUserConfig infers auth method when only openaiApiKey is set", async () => {
+    const configPath = getUserConfigPath();
+    await mkdir(join(sandboxDir, "xdg", "terminal-complete"), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify(
+        {
+          openaiApiKey: "key-only",
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const loaded = await loadUserConfig();
+    expect(loaded.authMethod).toBe("openai-api-key");
+    expect(loaded.openaiApiKey).toBe("key-only");
   });
 
   test("loadUserConfig returns empty object when config file is missing", async () => {

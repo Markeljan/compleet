@@ -8,6 +8,11 @@ tcomp open zshrc using vscode
 
 With zsh integration enabled, `tcomp ...` prefills your next prompt input so you can review/edit and press Enter manually.
 
+## Requirements
+
+- `zsh`
+- `bun` (runtime required by npm-installed `tcomp` launcher)
+
 ## Build binary
 
 ```bash
@@ -43,41 +48,48 @@ ln -sf "$(pwd)/dist/terminal-complete" "$HOME/bin/terminal-complete"
 export PATH="$HOME/bin:$PATH"
 ```
 
-## Quick setup
+## Setup
+
+Run setup directly:
 
 ```bash
-tcomp config           # interactive config wizard
-tcomp auth             # interactive provider auth wizard
-tcomp init --install   # auto-add zsh integration + completions
-source ~/.zshrc
+tcomp setup
 ```
+
+What setup does:
+
+- Shows first-run welcome guidance.
+- Offers shell integration install first (`Y/n`, default is `Yes`).
+- Lets you choose one auth method:
+  - `Codex OAuth`
+  - `OpenAI API key`
+
+If setup prerequisites are missing, it exits with an error (for example non-zsh shell or missing Bun runtime).
+
+## First-run onboarding
+
+If you run `tcomp <prompt>` before setup is completed, onboarding automatically launches the same `tcomp setup` flow.
 
 ## Usage
 
 ```bash
 tcomp find large files over 1GB in this folder
 tcomp -e find large files over 1GB in this folder
-tcomp --provider codex open zshrc using vscode
 tcomp -p hey how are you
-tcomp --json open zshrc using vscode
 ```
 
 ## Commands
 
-- `tcomp auth` (interactive by default)
-- `tcomp config` (interactive by default)
-- `tcomp init` (prints init script)
-- `tcomp init --install` (writes managed block to `~/.zshrc`)
+- `tcomp setup`
+- `tcomp help`
+- `tcomp version`
 
-## Providers
+## Breaking changes from v0.1.x
 
-- `codex` (default): uses local Codex CLI ChatGPT login and calls ChatGPT Codex responses endpoint
-- `openai`: uses API key auth
-
-## Optional env overrides
-
-- `TCOMP_PROVIDER`
-- `OPENAI_API_KEY` / `TCOMP_API_KEY`
+- Removed provider/model selection from CLI and setup.
+- Removed `tcomp auth`, `tcomp config`, and `tcomp init` command surfaces in favor of `tcomp setup`.
+- Removed `--json` output mode.
+- Removed API key/provider environment variable overrides.
 
 ## npm publish checklist
 
