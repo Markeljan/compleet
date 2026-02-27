@@ -1,5 +1,5 @@
 export type RiskLevel = "low" | "medium" | "high";
-export type AuthMethod = "codex-oauth" | "openai-api-key";
+export type ProviderName = "codex" | "openai";
 
 export interface Suggestion {
   command: string;

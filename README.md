@@ -2,12 +2,6 @@
 
 AI CLI for turning natural language into terminal commands with `tcomp`.
 
-```bash
-tcomp open zshrc using vscode
-```
-
-With zsh integration enabled, `tcomp ...` prefills your next prompt input so you can review/edit and press Enter manually.
-
 ## Requirements
 
 - `zsh`
@@ -32,7 +26,7 @@ bun test
 
 ## Local install for testing
 
-Option A (npm-style, recommended for publish testing):
+Option A (npm-style):
 
 ```bash
 npm link
@@ -48,48 +42,72 @@ ln -sf "$(pwd)/dist/terminal-complete" "$HOME/bin/terminal-complete"
 export PATH="$HOME/bin:$PATH"
 ```
 
-## Setup
+## First run
 
-Run setup directly:
+On first install, running `tcomp` (or any `tcomp <request>`) starts setup automatically.
 
 ```bash
-tcomp setup
+tcomp
 ```
 
-What setup does:
+Setup flow:
 
-- Shows first-run welcome guidance.
-- Offers shell integration install first (`Y/n`, default is `Yes`).
-- Lets you choose one auth method:
-  - `Codex OAuth`
-  - `OpenAI API key`
+- Shows welcome and requirement checks.
+- Offers zsh integration install first (`Y/n`, default is `Yes`).
+- Lets you choose provider auth:
+  - `codex` (OAuth via Codex CLI login)
+  - `openai` (API key)
 
-If setup prerequisites are missing, it exits with an error (for example non-zsh shell or missing Bun runtime).
-
-## First-run onboarding
-
-If you run `tcomp <prompt>` before setup is completed, onboarding automatically launches the same `tcomp setup` flow.
-
-## Usage
+After shell integration install, `tcomp` prints exactly what to run to activate it in your current shell:
 
 ```bash
-tcomp find large files over 1GB in this folder
-tcomp -e find large files over 1GB in this folder
-tcomp -p hey how are you
+source ~/.zshrc
+```
+
+## Practical usage examples
+
+```bash
+tcomp find all files larger than 500MB under this directory
+tcomp generate a command to sync ./dist to s3://my-bucket/releases
+tcomp show git commits from last 7 days grouped by author
+tcomp -e safely remove docker images that are dangling
+```
+
+General assistant mode:
+
+```bash
+tcomp -p explain when to use rsync vs scp
+```
+
+## Provider management
+
+Show active provider and available actions:
+
+```bash
+tcomp config
+```
+
+Run setup for a specific provider:
+
+```bash
+tcomp config codex
+tcomp config openai
+```
+
+Switch active provider:
+
+```bash
+tcomp use codex
+tcomp use openai
 ```
 
 ## Commands
 
-- `tcomp setup`
+- `tcomp setup [codex|openai]`
+- `tcomp config [codex|openai]`
+- `tcomp use <codex|openai>`
 - `tcomp help`
 - `tcomp version`
-
-## Breaking changes from v0.1.x
-
-- Removed provider/model selection from CLI and setup.
-- Removed `tcomp auth`, `tcomp config`, and `tcomp init` command surfaces in favor of `tcomp setup`.
-- Removed `--json` output mode.
-- Removed API key/provider environment variable overrides.
 
 ## npm publish checklist
 

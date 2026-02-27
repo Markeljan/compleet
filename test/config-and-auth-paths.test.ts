@@ -34,14 +34,14 @@ describe("user config and codex auth paths", () => {
 
   test("saveUserConfig and loadUserConfig round-trip", async () => {
     const savedPath = await saveUserConfig({
-      authMethod: "codex-oauth",
+      activeProvider: "codex",
     });
 
     expect(savedPath).toBe(getUserConfigPath());
     expect(savedPath).toContain(join("xdg", "terminal-complete", "config.json"));
 
     const loaded = await loadUserConfig();
-    expect(loaded.authMethod).toBe("codex-oauth");
+    expect(loaded.activeProvider).toBe("codex");
     expect(loaded.openaiApiKey).toBeUndefined();
   });
 
@@ -62,11 +62,30 @@ describe("user config and codex auth paths", () => {
     );
 
     const loaded = await loadUserConfig();
-    expect(loaded.authMethod).toBe("openai-api-key");
+    expect(loaded.activeProvider).toBe("openai");
     expect(loaded.openaiApiKey).toBe("legacy-key");
   });
 
-  test("loadUserConfig infers auth method when only openaiApiKey is set", async () => {
+  test("loadUserConfig migrates authMethod field", async () => {
+    const configPath = getUserConfigPath();
+    await mkdir(join(sandboxDir, "xdg", "terminal-complete"), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify(
+        {
+          authMethod: "codex-oauth",
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const loaded = await loadUserConfig();
+    expect(loaded.activeProvider).toBe("codex");
+  });
+
+  test("loadUserConfig infers provider when only openaiApiKey is set", async () => {
     const configPath = getUserConfigPath();
     await mkdir(join(sandboxDir, "xdg", "terminal-complete"), { recursive: true });
     await writeFile(
@@ -82,7 +101,7 @@ describe("user config and codex auth paths", () => {
     );
 
     const loaded = await loadUserConfig();
-    expect(loaded.authMethod).toBe("openai-api-key");
+    expect(loaded.activeProvider).toBe("openai");
     expect(loaded.openaiApiKey).toBe("key-only");
   });
 

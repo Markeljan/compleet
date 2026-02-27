@@ -38,9 +38,28 @@ describe("parseArgs", () => {
     expect(parsed.prompt).toBe("hey how are you");
   });
 
-  test("parses setup command", () => {
-    const parsed = parseArgs(["setup"]);
+  test("parses setup command with optional provider", () => {
+    const parsed = parseArgs(["setup", "codex"]);
     expect(parsed.mode).toBe("setup");
+    if (parsed.mode === "setup") {
+      expect(parsed.provider).toBe("codex");
+    }
+  });
+
+  test("parses config command", () => {
+    const parsed = parseArgs(["config", "openai"]);
+    expect(parsed.mode).toBe("config");
+    if (parsed.mode === "config") {
+      expect(parsed.provider).toBe("openai");
+    }
+  });
+
+  test("parses use command", () => {
+    const parsed = parseArgs(["use", "codex"]);
+    expect(parsed.mode).toBe("use");
+    if (parsed.mode === "use") {
+      expect(parsed.provider).toBe("codex");
+    }
   });
 
   test("maps legacy setup aliases", () => {
@@ -55,16 +74,22 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--json", "hello"])).toThrow(ArgParseError);
   });
 
+  test("shows prompt mode tip for missing prompt", () => {
+    expect(() => parseArgs(["-p"])).toThrow("For general prompts");
+  });
+
   test("throws on unknown options", () => {
     expect(() => parseArgs(["--does-not-exist", "hello"])).toThrow(ArgParseError);
   });
 });
 
 describe("helpText", () => {
-  test("uses tcomp branding and no cli.js references", () => {
+  test("uses tcomp branding with practical examples", () => {
     const help = helpText();
     expect(help).toContain("tcomp - AI terminal command helper");
-    expect(help).toContain("tcomp setup");
+    expect(help).toContain("tcomp config [codex|openai]");
+    expect(help).toContain("tcomp use <codex|openai>");
+    expect(help).toContain("Practical examples:");
     expect(help).not.toContain("--json");
     expect(help).not.toContain("cli.js");
   });

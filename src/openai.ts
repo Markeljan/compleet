@@ -20,12 +20,12 @@ interface ResponsesApiResponse {
 }
 
 interface ResolvedOpenAIConfig {
-  authMethod: "openai-api-key";
+  provider: "openai";
   apiKey: string;
 }
 
 interface ResolvedCodexConfig {
-  authMethod: "codex-oauth";
+  provider: "codex";
   accessToken: string;
 }
 
@@ -41,24 +41,24 @@ const GENERAL_ASSISTANT_SYSTEM_PROMPT =
 
 export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
   const stored = await loadUserConfig();
-  const authMethod = stored.authMethod;
+  const provider = stored.activeProvider;
 
-  if (authMethod === "openai-api-key") {
+  if (provider === "openai") {
     const apiKey = stored.openaiApiKey?.trim();
     if (!apiKey) {
-      throw new Error('OpenAI API key is missing from setup. Run "tcomp setup" to configure it.');
+      throw new Error('OpenAI API key is missing. Run "tcomp config openai" or "tcomp setup".');
     }
 
     return {
-      authMethod,
+      provider,
       apiKey,
     };
   }
 
-  if (authMethod === "codex-oauth") {
+  if (provider === "codex") {
     const auth = await ensureCodexChatGPTAuth(Boolean(process.stdin.isTTY));
     return {
-      authMethod,
+      provider,
       accessToken: auth.accessToken,
     };
   }
@@ -230,7 +230,7 @@ async function requestCodexResponses(
     const errorMessage = json?.error?.message ?? text;
     if (response.status === 401 || response.status === 403) {
       throw new Error(
-        `Codex auth failed (${response.status}). Run "tcomp setup" and choose "Codex OAuth", then try again.`,
+        `Codex auth failed (${response.status}). Run "tcomp config codex" or "tcomp setup", then try again.`,
       );
     }
     throw new Error(`Codex API error (${response.status}): ${errorMessage}`);
@@ -441,7 +441,7 @@ export async function generateSuggestion(
 
   let raw: string;
 
-  if (config.authMethod === "codex-oauth") {
+  if (config.provider === "codex") {
     raw = await requestCodexResponses(config.accessToken, systemPrompt, userPrompt);
     if (process.env.TCOMP_DEBUG_RAW === "1") {
       console.error("DEBUG raw codex response:");
@@ -475,7 +475,7 @@ Runtime context:
 - platform: ${context.platform}`;
 
   const raw =
-    config.authMethod === "codex-oauth"
+    config.provider === "codex"
       ? await requestCodexResponses(config.accessToken, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt)
       : await requestChatCompletion(config.apiKey, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt, false);
 

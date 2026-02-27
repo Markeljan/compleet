@@ -66,7 +66,9 @@ _tcomp_complete() {
   local state
   local -a commands
   commands=(
-    'setup:run interactive setup'
+    'setup:run interactive onboarding'
+    'config:show current config or rerun provider setup'
+    'use:set active provider'
     'help:show help'
     'version:show version'
   )
@@ -81,6 +83,13 @@ _tcomp_complete() {
       return
       ;;
     args)
+      case $words[2] in
+        setup|config|use)
+          _arguments \
+            '1:provider:(codex openai)'
+          return
+          ;;
+      esac
       _arguments -s \
         '--prompt[general assistant response]' \
         '-p[general assistant response]' \
@@ -105,7 +114,7 @@ tcomp() {
   fi
 
   case "$1" in
-    setup|auth|config|init|help|version|suggest|-h|--help|-v|--version)
+    setup|config|use|auth|init|help|version|suggest|-h|--help|-v|--version)
       command "$_tcomp_bin" "$@"
       return $?
       ;;
