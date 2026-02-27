@@ -1,0 +1,38 @@
+{
+  "name": "terminal-complete",
+  "version": "0.1.0",
+  "description": "AI-powered terminal command generator CLI (Bun)",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "cli",
+    "terminal",
+    "ai",
+    "bun",
+    "codex"
+  ],
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "terminal-complete": "bin/tcomp.cjs",
+    "tcomp": "bin/tcomp.cjs"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun run build.ts",
+    "smoke": "bun run src/cli.ts --help",
+    "test": "bun test",
+    "prepublishOnly": "bun test"
+  }
+}
