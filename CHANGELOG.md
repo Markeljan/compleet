@@ -1,5 +1,11 @@
 # terminal-complete
 
+## 0.4.2
+
+### Patch Changes
+
+- e6a1f9b: fix release
+
 ## 0.4.1
 
 ### Patch Changes
