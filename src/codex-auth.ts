@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -38,7 +38,7 @@ export async function loadCodexChatGPTAuth(): Promise<CodexChatGPTAuth> {
   } catch (error) {
     if (isFileMissing(error)) {
       throw new Error(
-        `Codex auth not found at ${authPath}. Run "tcomp config codex" or "tcomp setup" first.`,
+        `Codex auth not found at ${authPath}. Run "tcomp config codex" or "tcomp setup" first.`
       );
     }
     throw error;
@@ -53,23 +53,31 @@ export async function loadCodexChatGPTAuth(): Promise<CodexChatGPTAuth> {
 
   if (parsed.auth_mode !== "chatgpt") {
     throw new Error(
-      `Codex auth mode is not ChatGPT (found: ${String(parsed.auth_mode)}). Run "codex login" with ChatGPT auth.`,
+      `Codex auth mode is not ChatGPT (found: ${String(parsed.auth_mode)}). Run "codex login" with ChatGPT auth.`
     );
   }
 
-  const accessToken = typeof parsed.tokens?.access_token === "string" ? parsed.tokens.access_token : "";
-  const accountId = typeof parsed.tokens?.account_id === "string" ? parsed.tokens.account_id : undefined;
+  const accessToken =
+    typeof parsed.tokens?.access_token === "string"
+      ? parsed.tokens.access_token
+      : "";
+  const accountId =
+    typeof parsed.tokens?.account_id === "string"
+      ? parsed.tokens.account_id
+      : undefined;
 
   if (!accessToken) {
     throw new Error(
-      `Codex auth file does not contain a ChatGPT access token. Run "tcomp config codex" or "tcomp setup".`,
+      `Codex auth file does not contain a ChatGPT access token. Run "tcomp config codex" or "tcomp setup".`
     );
   }
 
   return { accessToken, accountId };
 }
 
-export async function ensureCodexChatGPTAuth(interactive: boolean): Promise<CodexChatGPTAuth> {
+export async function ensureCodexChatGPTAuth(
+  interactive: boolean
+): Promise<CodexChatGPTAuth> {
   try {
     return await loadCodexChatGPTAuth();
   } catch (error) {
@@ -90,16 +98,16 @@ export async function ensureCodexChatGPTAuth(interactive: boolean): Promise<Code
 
 export async function runCodexCliAuthAction(
   action: "login" | "status" | "logout",
-  options: CodexLoginOptions = {},
+  options: CodexLoginOptions = {}
 ): Promise<number> {
-  const args =
-    action === "login"
-      ? options.deviceAuth
-        ? ["login", "--device-auth"]
-        : ["login"]
-      : action === "status"
-        ? ["login", "status"]
-        : ["logout"];
+  let args: string[];
+  if (action === "login") {
+    args = options.deviceAuth ? ["login", "--device-auth"] : ["login"];
+  } else if (action === "status") {
+    args = ["login", "status"];
+  } else {
+    args = ["logout"];
+  }
 
   return await new Promise<number>((resolve, reject) => {
     const child = spawn("codex", args, {
@@ -109,7 +117,9 @@ export async function runCodexCliAuthAction(
 
     child.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error('Could not find "codex" in PATH. Install Codex CLI first.'));
+        reject(
+          new Error('Could not find "codex" in PATH. Install Codex CLI first.')
+        );
         return;
       }
       reject(error);
@@ -117,7 +127,9 @@ export async function runCodexCliAuthAction(
 
     child.on("exit", (code, signal) => {
       if (signal) {
-        reject(new Error(`codex ${args.join(" ")} terminated by signal ${signal}`));
+        reject(
+          new Error(`codex ${args.join(" ")} terminated by signal ${signal}`)
+        );
         return;
       }
       resolve(code ?? 1);

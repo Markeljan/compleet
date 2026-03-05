@@ -1,5 +1,5 @@
-import { basename } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { basename } from "node:path";
 
 type BuildTarget =
   | "bun-darwin-x64"
@@ -17,8 +17,8 @@ type BuildTarget =
   | "bun-windows-arm64";
 
 interface BuildCliOptions {
-  target?: BuildTarget;
   debug: boolean;
+  target?: BuildTarget;
 }
 
 function parseBuildOptions(argv: string[]): BuildCliOptions {
@@ -45,8 +45,12 @@ function parseBuildOptions(argv: string[]): BuildCliOptions {
   return options;
 }
 
-async function compileBinary(outfile: string, target: BuildTarget | undefined, debug: boolean) {
-  const pkg = await Bun.file("./package.json").json() as { version?: string };
+async function compileBinary(
+  outfile: string,
+  target: BuildTarget | undefined,
+  debug: boolean
+) {
+  const pkg = (await Bun.file("./package.json").json()) as { version?: string };
   const version = pkg.version ?? "0.0.0-dev";
   const buildTime = new Date().toISOString();
 

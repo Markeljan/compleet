@@ -10,7 +10,9 @@ function expectSuggest(args: ReturnType<typeof parseArgs>) {
 
 describe("parseArgs", () => {
   test("treats unquoted words as a single prompt", () => {
-    const parsed = expectSuggest(parseArgs(["hey", "this", "is", "a", "prompt"]));
+    const parsed = expectSuggest(
+      parseArgs(["hey", "this", "is", "a", "prompt"])
+    );
     expect(parsed.prompt).toBe("hey this is a prompt");
   });
 
@@ -21,7 +23,9 @@ describe("parseArgs", () => {
   });
 
   test("supports explain flag after prompt", () => {
-    const parsed = expectSuggest(parseArgs(["find", "big", "files", "--explain"]));
+    const parsed = expectSuggest(
+      parseArgs(["find", "big", "files", "--explain"])
+    );
     expect(parsed.explain).toBe(true);
     expect(parsed.prompt).toBe("find big files");
   });
@@ -79,7 +83,9 @@ describe("parseArgs", () => {
   });
 
   test("throws on unknown options", () => {
-    expect(() => parseArgs(["--does-not-exist", "hello"])).toThrow(ArgParseError);
+    expect(() => parseArgs(["--does-not-exist", "hello"])).toThrow(
+      ArgParseError
+    );
   });
 });
 

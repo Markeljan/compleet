@@ -12,7 +12,10 @@ export async function loadSystemPrompt(): Promise<string> {
   return cachedSystemPrompt;
 }
 
-export function buildUserPrompt(request: string, context: RuntimeContext): string {
+export function buildUserPrompt(
+  request: string,
+  context: RuntimeContext
+): string {
   return JSON.stringify(
     {
       task: request,
@@ -27,7 +30,6 @@ export function buildUserPrompt(request: string, context: RuntimeContext): strin
       },
     },
     null,
-    2,
+    2
   );
 }
-

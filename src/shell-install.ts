@@ -8,7 +8,9 @@ interface InstallResult {
   updated: boolean;
 }
 
-export async function installShellIntegration(shell: SupportedShell): Promise<InstallResult> {
+export async function installShellIntegration(
+  shell: SupportedShell
+): Promise<InstallResult> {
   const rcPath = getRcPath(shell);
   const markerStart = "# >>> tcomp integration >>>";
   const markerEnd = "# <<< tcomp integration <<<";
@@ -34,7 +36,9 @@ export async function installShellIntegration(shell: SupportedShell): Promise<In
   return { path: rcPath, updated: true };
 }
 
-export async function isShellIntegrationInstalled(shell: SupportedShell): Promise<boolean> {
+export async function isShellIntegrationInstalled(
+  shell: SupportedShell
+): Promise<boolean> {
   const rcPath = getRcPath(shell);
   const markerStart = "# >>> tcomp integration >>>";
   const markerEnd = "# <<< tcomp integration <<<";
@@ -73,10 +77,17 @@ function getRcPath(shell: SupportedShell): string {
       return getZshRcPath();
     case "bash":
       return getBashRcPath();
+    default:
+      return exhaustiveShell(shell);
   }
 }
 
-function upsertManagedBlock(existing: string, start: string, end: string, block: string): string {
+function upsertManagedBlock(
+  existing: string,
+  start: string,
+  end: string,
+  block: string
+): string {
   const startIndex = existing.indexOf(start);
   const endIndex = existing.indexOf(end);
 
@@ -111,4 +122,8 @@ function resolveHomeDir(): string {
     return envHome;
   }
   return homedir();
+}
+
+function exhaustiveShell(value: never): never {
+  throw new Error(`Unsupported shell: ${value}`);
 }

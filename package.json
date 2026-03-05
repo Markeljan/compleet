@@ -2,6 +2,14 @@
   "name": "terminal-complete",
   "version": "0.4.0",
   "description": "AI-powered terminal command generator CLI (Bun)",
+  "homepage": "https://github.com/Markeljan/terminal-complete#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Markeljan/terminal-complete.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Markeljan/terminal-complete/issues"
+  },
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -32,7 +40,20 @@
     "dev": "bun run src/cli.ts",
     "build": "bun run build.ts",
     "smoke": "bun run src/cli.ts --help",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
     "test": "bun test",
-    "prepublishOnly": "bun test"
+    "ci": "bun run check && bun test",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish",
+    "prepublishOnly": "bun run ci",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.0",
+    "@changesets/cli": "^2.30.0",
+    "lefthook": "^2.1.2",
+    "ultracite": "7.2.4"
   }
 }

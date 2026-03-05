@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installShellIntegration, isShellIntegrationInstalled } from "../src/shell-install";
+import {
+  installShellIntegration,
+  isShellIntegrationInstalled,
+} from "../src/shell-install";
 
 describe("installShellIntegration(zsh)", () => {
   const originalZdotdir = process.env.ZDOTDIR;
@@ -15,7 +18,7 @@ describe("installShellIntegration(zsh)", () => {
 
   afterEach(async () => {
     if (originalZdotdir === undefined) {
-      delete process.env.ZDOTDIR;
+      Reflect.deleteProperty(process.env, "ZDOTDIR");
     } else {
       process.env.ZDOTDIR = originalZdotdir;
     }
@@ -47,20 +50,20 @@ describe("installShellIntegration(zsh)", () => {
     await writeFile(
       zshrcPath,
       [
-        "export PATH=\"$HOME/bin:$PATH\"",
+        'export PATH="$HOME/bin:$PATH"',
         "# >>> tcomp integration >>>",
         "echo legacy block",
         "# <<< tcomp integration <<<",
         "",
       ].join("\n"),
-      "utf8",
+      "utf8"
     );
 
     const result = await installShellIntegration("zsh");
     expect(result.updated).toBe(true);
 
     const content = await readFile(zshrcPath, "utf8");
-    expect(content).toContain("export PATH=\"$HOME/bin:$PATH\"");
+    expect(content).toContain('export PATH="$HOME/bin:$PATH"');
     expect(content).toContain("# tcomp zsh integration");
 
     const startMatches = content.match(/# >>> tcomp integration >>>/g) ?? [];
@@ -87,7 +90,7 @@ describe("installShellIntegration(bash)", () => {
 
   afterEach(async () => {
     if (originalHome === undefined) {
-      delete process.env.HOME;
+      Reflect.deleteProperty(process.env, "HOME");
     } else {
       process.env.HOME = originalHome;
     }
@@ -119,20 +122,20 @@ describe("installShellIntegration(bash)", () => {
     await writeFile(
       bashrcPath,
       [
-        "export PATH=\"$HOME/bin:$PATH\"",
+        'export PATH="$HOME/bin:$PATH"',
         "# >>> tcomp integration >>>",
         "echo legacy block",
         "# <<< tcomp integration <<<",
         "",
       ].join("\n"),
-      "utf8",
+      "utf8"
     );
 
     const result = await installShellIntegration("bash");
     expect(result.updated).toBe(true);
 
     const content = await readFile(bashrcPath, "utf8");
-    expect(content).toContain("export PATH=\"$HOME/bin:$PATH\"");
+    expect(content).toContain('export PATH="$HOME/bin:$PATH"');
     expect(content).toContain("# tcomp bash integration");
 
     const startMatches = content.match(/# >>> tcomp integration >>>/g) ?? [];

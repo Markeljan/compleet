@@ -1,5 +1,5 @@
-import { buildUserPrompt, loadSystemPrompt } from "./prompt";
 import { ensureCodexChatGPTAuth } from "./codex-auth";
+import { buildUserPrompt, loadSystemPrompt } from "./prompt";
 import type { RiskLevel, RuntimeContext, Suggestion } from "./types";
 import { loadUserConfig } from "./user-config";
 
@@ -13,20 +13,20 @@ interface ChatCompletionResponse {
 }
 
 interface ResponsesApiResponse {
-  output_text?: unknown;
-  output?: unknown;
-  response?: ResponsesApiResponse;
   error?: { message?: string };
+  output?: unknown;
+  output_text?: unknown;
+  response?: ResponsesApiResponse;
 }
 
 interface ResolvedOpenAIConfig {
-  provider: "openai";
   apiKey: string;
+  provider: "openai";
 }
 
 interface ResolvedCodexConfig {
-  provider: "codex";
   accessToken: string;
+  provider: "codex";
 }
 
 type ResolvedRuntimeConfig = ResolvedOpenAIConfig | ResolvedCodexConfig;
@@ -38,6 +38,12 @@ const CODEX_MODEL = "gpt-5.3-codex";
 
 const GENERAL_ASSISTANT_SYSTEM_PROMPT =
   "You are a concise, helpful assistant. Answer directly in plain text unless asked for another format.";
+const CODE_FENCE_START_REGEX = /^```[a-zA-Z0-9_-]*\s*/;
+const CODE_FENCE_END_REGEX = /\s*```$/;
+const SSE_EVENT_LINE_REGEX = /(^|\n)\s*event:\s/m;
+const SSE_DATA_LINE_REGEX = /(^|\n)\s*data:\s/m;
+const SSE_CHUNK_SPLIT_REGEX = /\r?\n\r?\n/;
+const SSE_LINE_SPLIT_REGEX = /\r?\n/;
 
 export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
   const stored = await loadUserConfig();
@@ -46,7 +52,9 @@ export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
   if (provider === "openai") {
     const apiKey = stored.openaiApiKey?.trim();
     if (!apiKey) {
-      throw new Error('OpenAI API key is missing. Run "tcomp config openai" or "tcomp setup".');
+      throw new Error(
+        'OpenAI API key is missing. Run "tcomp config openai" or "tcomp setup".'
+      );
     }
 
     return {
@@ -66,7 +74,9 @@ export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
   throw new Error('Setup is required before using tcomp. Run "tcomp setup".');
 }
 
-function normalizeContent(content: string | Array<{ type?: string; text?: string }> | undefined): string {
+function normalizeContent(
+  content: string | Array<{ type?: string; text?: string }> | undefined
+): string {
   if (typeof content === "string") {
     return content;
   }
@@ -84,8 +94,8 @@ function stripCodeFence(input: string): string {
     return trimmed;
   }
 
-  const withoutStart = trimmed.replace(/^```[a-zA-Z0-9_-]*\s*/, "");
-  return withoutStart.replace(/\s*```$/, "").trim();
+  const withoutStart = trimmed.replace(CODE_FENCE_START_REGEX, "");
+  return withoutStart.replace(CODE_FENCE_END_REGEX, "").trim();
 }
 
 function tryExtractJson(raw: string): unknown {
@@ -125,7 +135,8 @@ function parseSuggestion(raw: string): Suggestion {
 
   const obj = parsed as Record<string, unknown>;
   const command = typeof obj.command === "string" ? obj.command.trim() : "";
-  const explanation = typeof obj.explanation === "string" ? obj.explanation.trim() : "";
+  const explanation =
+    typeof obj.explanation === "string" ? obj.explanation.trim() : "";
   const risk = asRiskLevel(obj.risk);
   const needsConfirmation =
     typeof obj.needsConfirmation === "boolean"
@@ -144,7 +155,7 @@ async function requestChatCompletion(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string,
-  includeResponseFormat: boolean,
+  includeResponseFormat: boolean
 ): Promise<string> {
   const payload: Record<string, unknown> = {
     model: OPENAI_MODEL,
@@ -192,7 +203,7 @@ async function requestChatCompletion(
 async function requestCodexResponses(
   accessToken: string,
   systemPrompt: string,
-  userPrompt: string,
+  userPrompt: string
 ): Promise<string> {
   const payload = {
     model: CODEX_MODEL,
@@ -230,7 +241,7 @@ async function requestCodexResponses(
     const errorMessage = json?.error?.message ?? text;
     if (response.status === 401 || response.status === 403) {
       throw new Error(
-        `Codex auth failed (${response.status}). Run "tcomp config codex" or "tcomp setup", then try again.`,
+        `Codex auth failed (${response.status}). Run "tcomp config codex" or "tcomp setup", then try again.`
       );
     }
     throw new Error(`Codex API error (${response.status}): ${errorMessage}`);
@@ -239,8 +250,8 @@ async function requestCodexResponses(
   const contentType = response.headers.get("content-type") ?? "";
   const looksLikeSse =
     contentType.includes("text/event-stream") ||
-    /(^|\n)\s*event:\s/m.test(text) ||
-    /(^|\n)\s*data:\s/m.test(text);
+    SSE_EVENT_LINE_REGEX.test(text) ||
+    SSE_DATA_LINE_REGEX.test(text);
   const content = looksLikeSse
     ? extractTextFromSseStream(text)
     : extractResponsesOutputText(json ?? text);
@@ -255,40 +266,13 @@ function extractTextFromSseStream(sse: string): string {
   const deltas: string[] = [];
   const fallbackPayloads: unknown[] = [];
 
-  const chunks = sse.split(/\r?\n\r?\n/);
-  for (const chunk of chunks) {
-    if (!chunk.trim()) {
+  for (const chunk of sse.split(SSE_CHUNK_SPLIT_REGEX)) {
+    const parsedChunk = parseSseChunk(chunk);
+    if (!parsedChunk) {
       continue;
     }
 
-    let eventName = "";
-    const dataLines: string[] = [];
-    for (const line of chunk.split(/\r?\n/)) {
-      if (line.startsWith("event:")) {
-        eventName = line.slice("event:".length).trim();
-        continue;
-      }
-      if (line.startsWith("data:")) {
-        dataLines.push(line.slice("data:".length).trimStart());
-      }
-    }
-
-    if (dataLines.length === 0) {
-      continue;
-    }
-
-    const data = dataLines.join("\n");
-    if (data === "[DONE]") {
-      continue;
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(data);
-    } catch {
-      continue;
-    }
-
+    const { eventName, parsed } = parsedChunk;
     const delta = extractResponsesDeltaText(parsed, eventName);
     if (delta) {
       deltas.push(delta);
@@ -301,7 +285,7 @@ function extractTextFromSseStream(sse: string): string {
   }
 
   if (doneTexts.length > 0) {
-    return doneTexts[doneTexts.length - 1] ?? "";
+    return doneTexts.at(-1) ?? "";
   }
 
   if (deltas.length > 0) {
@@ -318,37 +302,83 @@ function extractTextFromSseStream(sse: string): string {
   return "";
 }
 
+function parseSseChunk(
+  chunk: string
+): { eventName: string; parsed: unknown } | null {
+  if (!chunk.trim()) {
+    return null;
+  }
+
+  let eventName = "";
+  const dataLines: string[] = [];
+  for (const line of chunk.split(SSE_LINE_SPLIT_REGEX)) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice("event:".length).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+
+  if (dataLines.length === 0) {
+    return null;
+  }
+
+  const data = dataLines.join("\n");
+  if (data === "[DONE]") {
+    return null;
+  }
+
+  try {
+    return { eventName, parsed: JSON.parse(data) };
+  } catch {
+    return null;
+  }
+}
+
 function extractResponsesDeltaText(input: unknown, eventName: string): string {
-  if (!input || typeof input !== "object") {
+  const obj = asRecord(input);
+  if (!obj) {
     return "";
   }
 
-  const obj = input as Record<string, unknown>;
   if (typeof obj.delta === "string") {
     return obj.delta;
   }
 
-  if (typeof obj.text === "string" && eventName.includes("delta")) {
+  const isDeltaEvent = eventName.includes("delta");
+  if (typeof obj.text === "string" && isDeltaEvent) {
     return obj.text;
   }
 
-  const content = obj.content;
-  if (Array.isArray(content)) {
-    let combined = "";
-    for (const item of content) {
-      if (item && typeof item === "object") {
-        const rec = item as Record<string, unknown>;
-        if (typeof rec.delta === "string") {
-          combined += rec.delta;
-        } else if (typeof rec.text === "string" && eventName.includes("delta")) {
-          combined += rec.text;
-        }
-      }
-    }
-    return combined;
+  return extractDeltaFromContent(obj.content, isDeltaEvent);
+}
+
+function extractDeltaFromContent(
+  content: unknown,
+  isDeltaEvent: boolean
+): string {
+  if (!Array.isArray(content)) {
+    return "";
   }
 
-  return "";
+  let combined = "";
+  for (const item of content) {
+    const record = asRecord(item);
+    if (!record) {
+      continue;
+    }
+
+    if (typeof record.delta === "string") {
+      combined += record.delta;
+      continue;
+    }
+    if (typeof record.text === "string" && isDeltaEvent) {
+      combined += record.text;
+    }
+  }
+  return combined;
 }
 
 function extractResponsesDoneText(input: unknown, eventName: string): string {
@@ -357,7 +387,10 @@ function extractResponsesDoneText(input: unknown, eventName: string): string {
   }
 
   const obj = input as Record<string, unknown>;
-  if (eventName === "response.output_text.done" && typeof obj.text === "string") {
+  if (
+    eventName === "response.output_text.done" &&
+    typeof obj.text === "string"
+  ) {
     return obj.text;
   }
 
@@ -378,11 +411,13 @@ function extractResponsesOutputText(input: unknown): string {
   if (typeof input === "string") {
     return input;
   }
-  if (!input || typeof input !== "object") {
+
+  const obj = asRecord(input) as
+    | (ResponsesApiResponse & Record<string, unknown>)
+    | null;
+  if (!obj) {
     return "";
   }
-
-  const obj = input as ResponsesApiResponse & Record<string, unknown>;
 
   if (typeof obj.output_text === "string") {
     return obj.output_text;
@@ -395,30 +430,37 @@ function extractResponsesOutputText(input: unknown): string {
     }
   }
 
-  if (!Array.isArray(obj.output)) {
+  return extractOutputTextParts(obj.output);
+}
+
+function extractOutputTextParts(output: unknown): string {
+  if (!Array.isArray(output)) {
     return "";
   }
 
   const parts: string[] = [];
-  for (const item of obj.output) {
-    if (!item || typeof item !== "object") {
+  for (const item of output) {
+    const record = asRecord(item);
+    if (!(record && Array.isArray(record.content))) {
       continue;
     }
-    const record = item as Record<string, unknown>;
-    if (!Array.isArray(record.content)) {
-      continue;
-    }
+
     for (const piece of record.content) {
-      if (!piece || typeof piece !== "object") {
-        continue;
-      }
-      const part = piece as Record<string, unknown>;
-      if (typeof part.text === "string") {
+      const part = asRecord(piece);
+      if (typeof part?.text === "string") {
         parts.push(part.text);
       }
     }
   }
+
   return parts.join("");
+}
+
+function asRecord(input: unknown): Record<string, unknown> | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  return input as Record<string, unknown>;
 }
 
 function isResponseFormatUnsupported(error: unknown): boolean {
@@ -426,12 +468,15 @@ function isResponseFormatUnsupported(error: unknown): boolean {
     return false;
   }
   const msg = error.message.toLowerCase();
-  return msg.includes("response_format") && (msg.includes("unsupported") || msg.includes("unknown"));
+  return (
+    msg.includes("response_format") &&
+    (msg.includes("unsupported") || msg.includes("unknown"))
+  );
 }
 
 export async function generateSuggestion(
   request: string,
-  context: RuntimeContext,
+  context: RuntimeContext
 ): Promise<Suggestion> {
   const config = await resolveRuntimeConfig();
   const [systemPrompt, userPrompt] = await Promise.all([
@@ -442,7 +487,11 @@ export async function generateSuggestion(
   let raw: string;
 
   if (config.provider === "codex") {
-    raw = await requestCodexResponses(config.accessToken, systemPrompt, userPrompt);
+    raw = await requestCodexResponses(
+      config.accessToken,
+      systemPrompt,
+      userPrompt
+    );
     if (process.env.TCOMP_DEBUG_RAW === "1") {
       console.error("DEBUG raw codex response:");
       console.error(raw);
@@ -451,12 +500,22 @@ export async function generateSuggestion(
   }
 
   try {
-    raw = await requestChatCompletion(config.apiKey, systemPrompt, userPrompt, true);
+    raw = await requestChatCompletion(
+      config.apiKey,
+      systemPrompt,
+      userPrompt,
+      true
+    );
   } catch (error) {
     if (!isResponseFormatUnsupported(error)) {
       throw error;
     }
-    raw = await requestChatCompletion(config.apiKey, systemPrompt, userPrompt, false);
+    raw = await requestChatCompletion(
+      config.apiKey,
+      systemPrompt,
+      userPrompt,
+      false
+    );
   }
 
   return parseSuggestion(raw);
@@ -464,7 +523,7 @@ export async function generateSuggestion(
 
 export async function generatePromptResponse(
   request: string,
-  context: RuntimeContext,
+  context: RuntimeContext
 ): Promise<string> {
   const config = await resolveRuntimeConfig();
   const userPrompt = `User prompt: ${request}
@@ -476,8 +535,17 @@ Runtime context:
 
   const raw =
     config.provider === "codex"
-      ? await requestCodexResponses(config.accessToken, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt)
-      : await requestChatCompletion(config.apiKey, GENERAL_ASSISTANT_SYSTEM_PROMPT, userPrompt, false);
+      ? await requestCodexResponses(
+          config.accessToken,
+          GENERAL_ASSISTANT_SYSTEM_PROMPT,
+          userPrompt
+        )
+      : await requestChatCompletion(
+          config.apiKey,
+          GENERAL_ASSISTANT_SYSTEM_PROMPT,
+          userPrompt,
+          false
+        );
 
   return raw.trim();
 }

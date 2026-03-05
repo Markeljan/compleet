@@ -2,63 +2,59 @@
 
 AI CLI for turning natural language into terminal commands with `tcomp`.
 
-## Requirements
+[![npm version](https://img.shields.io/npm/v/terminal-complete)](https://www.npmjs.com/package/terminal-complete)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit/)
+[![CI](https://github.com/Markeljan/terminal-complete/actions/workflows/ci.yml/badge.svg)](https://github.com/Markeljan/terminal-complete/actions/workflows/ci.yml)
 
-- `zsh` or `bash`
-- `bun` (runtime required by npm-installed `tcomp` launcher)
+## Install (Bun)
 
-## Build binary
-
-```bash
-bun run build.ts
-```
-
-Outputs:
-
-- `dist/terminal-complete`
-- `dist/tcomp`
-
-## Run tests
+Global install:
 
 ```bash
-bun test
-```
-
-## Local install for testing
-
-Option A (npm-style):
-
-```bash
-npm link
+bun add -g terminal-complete
 tcomp --help
 ```
 
-Option B (binary symlink):
+One-off usage without install:
 
 ```bash
-mkdir -p "$HOME/bin"
-ln -sf "$(pwd)/dist/tcomp" "$HOME/bin/tcomp"
-ln -sf "$(pwd)/dist/terminal-complete" "$HOME/bin/terminal-complete"
-export PATH="$HOME/bin:$PATH"
+bunx terminal-complete --help
 ```
 
-## First run
+## Links
 
-On first install, running `tcomp` (or any `tcomp <request>`) starts setup automatically.
+- npm package: https://www.npmjs.com/package/terminal-complete
+- GitHub repository: https://github.com/Markeljan/terminal-complete
+- Issue tracker: https://github.com/Markeljan/terminal-complete/issues
+
+## Requirements
+
+- `zsh` or `bash`
+- `bun`
+
+## Quick Start
+
+First run setup:
 
 ```bash
 tcomp
 ```
 
+Or run setup directly:
+
+```bash
+tcomp setup
+```
+
 Setup flow:
 
-- Shows welcome and requirement checks.
-- Offers shell integration install first (`Y/n`, default is `Yes`).
-- Lets you choose provider auth:
-  - `codex` (OpenAI OAuth via Codex CLI, with browser or device login)
-  - `openai` (API key)
+- checks environment and shell support
+- offers shell integration install
+- sets up provider auth:
+  - `codex`: OpenAI OAuth via Codex CLI (browser or device flow)
+  - `openai`: OpenAI API key
 
-After shell integration install, `tcomp` prints exactly what to run to activate it in your current shell:
+After shell integration install, run:
 
 ```bash
 # zsh
@@ -68,7 +64,7 @@ source ~/.zshrc
 source ~/.bashrc
 ```
 
-## Practical usage examples
+## Common Usage
 
 ```bash
 tcomp find all files larger than 500MB under this directory
@@ -77,21 +73,34 @@ tcomp show git commits from last 7 days grouped by author
 tcomp -e safely remove docker images that are dangling
 ```
 
-General assistant mode:
+General assistant (non-command) mode:
 
 ```bash
 tcomp -p explain when to use rsync vs scp
 ```
 
-## Provider management
+## Setup and Config Commands
 
-Show active provider and available actions:
+Run full onboarding:
+
+```bash
+tcomp setup
+```
+
+Run onboarding for a specific provider:
+
+```bash
+tcomp setup codex
+tcomp setup openai
+```
+
+Show current configuration/status:
 
 ```bash
 tcomp config
 ```
 
-Run setup for a specific provider:
+Re-run provider auth/config:
 
 ```bash
 tcomp config codex
@@ -105,20 +114,22 @@ tcomp use codex
 tcomp use openai
 ```
 
+## Common Flags
+
+- `--explain`, `-e`: print explanation/risk to stderr
+- `--prompt`, `-p`: general assistant mode (not command generation)
+- `--help`, `-h`: show help
+- `--version`, `-v`: show version
+
 ## Commands
 
+- `tcomp <request>`
 - `tcomp setup [codex|openai]`
 - `tcomp config [codex|openai]`
 - `tcomp use <codex|openai>`
 - `tcomp help`
 - `tcomp version`
 
-## npm publish checklist
+## Maintainers
 
-```bash
-bun test
-npm pack --dry-run
-npm publish --access public
-```
-
-If you also want standalone binaries for release artifacts, run `bun run build.ts` separately and upload `dist/tcomp` + `dist/terminal-complete`.
+Release and npm publishing docs: `docs/releasing.md`

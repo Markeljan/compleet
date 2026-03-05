@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ProviderName } from "./types";
@@ -34,7 +34,9 @@ export async function loadUserConfig(): Promise<UserConfig> {
   }
 }
 
-export async function updateUserConfig(patch: Partial<UserConfig>): Promise<string> {
+export async function updateUserConfig(
+  patch: Partial<UserConfig>
+): Promise<string> {
   const current = await loadUserConfig();
   return saveUserConfig({ ...current, ...patch });
 }
@@ -69,12 +71,12 @@ function parseUserConfig(raw: string): UserConfig {
 
   const obj = parsed as Record<string, unknown>;
 
-  const openaiApiKey =
-    typeof obj.openaiApiKey === "string"
-      ? obj.openaiApiKey
-      : typeof obj.apiKey === "string"
-        ? obj.apiKey
-        : undefined;
+  let openaiApiKey: string | undefined;
+  if (typeof obj.openaiApiKey === "string") {
+    openaiApiKey = obj.openaiApiKey;
+  } else if (typeof obj.apiKey === "string") {
+    openaiApiKey = obj.apiKey;
+  }
 
   const activeProvider =
     normalizeProviderName(obj.activeProvider) ??
@@ -95,7 +97,9 @@ function normalizeProviderName(value: unknown): ProviderName | undefined {
   return undefined;
 }
 
-function normalizeProviderFromAuthMethod(value: unknown): ProviderName | undefined {
+function normalizeProviderFromAuthMethod(
+  value: unknown
+): ProviderName | undefined {
   if (value === "codex-oauth") {
     return "codex";
   }

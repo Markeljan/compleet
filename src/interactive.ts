@@ -1,11 +1,11 @@
-import * as readline from "node:readline";
+import { createInterface, emitKeypressEvents, type Key } from "node:readline";
 
 export function canPromptInteractively(): boolean {
   return Boolean(process.stdin.isTTY && process.stderr.isTTY);
 }
 
 export async function askLine(prompt: string): Promise<string> {
-  const rl = readline.createInterface({
+  const rl = createInterface({
     input: process.stdin,
     output: process.stderr,
     terminal: canPromptInteractively(),
@@ -23,7 +23,7 @@ export async function askLine(prompt: string): Promise<string> {
 export async function askChoice(
   prompt: string,
   options: string[],
-  defaultValue?: string,
+  defaultValue?: string
 ): Promise<string> {
   const normalized = new Set(options);
   const suffix = defaultValue ? ` [${defaultValue}]` : "";
@@ -38,7 +38,10 @@ export async function askChoice(
   }
 }
 
-export async function confirm(prompt: string, defaultYes = true): Promise<boolean> {
+export async function confirm(
+  prompt: string,
+  defaultYes = true
+): Promise<boolean> {
   const suffix = defaultYes ? " [Y/n]" : " [y/N]";
   const raw = (await askLine(`${prompt}${suffix}: `)).trim().toLowerCase();
   if (!raw) {
@@ -55,17 +58,22 @@ export interface SelectOption<T = string> {
 export async function selectWithArrows<T>(
   prompt: string,
   options: SelectOption<T>[],
-  defaultIndex = 0,
+  defaultIndex = 0
 ): Promise<T> {
   if (options.length === 0) {
     throw new Error("selectWithArrows requires at least one option");
   }
 
-  if (!canPromptInteractively() || typeof process.stdin.setRawMode !== "function") {
+  if (
+    !canPromptInteractively() ||
+    typeof process.stdin.setRawMode !== "function"
+  ) {
     const labels = options.map((option) => option.label);
-    const defaultLabel = options[Math.max(0, Math.min(defaultIndex, options.length - 1))]?.label;
+    const defaultLabel =
+      options[Math.max(0, Math.min(defaultIndex, options.length - 1))]?.label;
     const selected = await askChoice(prompt, labels, defaultLabel);
-    const matched = options.find((option) => option.label === selected) ?? options[0];
+    const matched =
+      options.find((option) => option.label === selected) ?? options[0];
     return matched.value;
   }
 
@@ -73,7 +81,7 @@ export async function selectWithArrows<T>(
   const stdout = process.stdout;
   const initialIndex = Math.max(0, Math.min(defaultIndex, options.length - 1));
 
-  readline.emitKeypressEvents(stdin);
+  emitKeypressEvents(stdin);
 
   return await new Promise<T>((resolve, reject) => {
     let index = initialIndex;
@@ -116,14 +124,16 @@ export async function selectWithArrows<T>(
 
     const done = (value: T) => {
       clearRender();
-      stdout.write(`${prompt} ${String(
-        options.find((option) => option.value === value)?.label ?? "",
-      )}\n`);
+      stdout.write(
+        `${prompt} ${String(
+          options.find((option) => option.value === value)?.label ?? ""
+        )}\n`
+      );
       cleanup();
       resolve(value);
     };
 
-    const onKeyPress = (_: string, key: readline.Key) => {
+    const onKeyPress = (_: string, key: Key) => {
       if (key.name === "up") {
         index = (index - 1 + options.length) % options.length;
         render();
