@@ -7,6 +7,7 @@ This repository uses [Changesets](https://github.com/changesets/changesets) for 
 1. In npm package settings, enable Trusted Publishing for this GitHub repository/workflow.
 2. Keep `main` protected (require PRs and green CI before merge).
 3. No `NPM_TOKEN` secret is required when Trusted Publishing is configured correctly.
+4. Release workflow uses Node 22 and explicitly clears `NODE_AUTH_TOKEN` to avoid token fallback auth.
 
 ## Daily release workflow
 
