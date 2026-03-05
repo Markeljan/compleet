@@ -23,16 +23,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node (for npm publish)
+      - name: Setup Node (for npm trusted publishing)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      - name: Ensure latest npm (trusted publishing support)
+        run: npm install -g npm@latest
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Show tool versions
+        run: |
+          node --version
+          npm --version
+          bun --version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
