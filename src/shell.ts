@@ -10,6 +10,8 @@ export function renderShellIntegration(shell: SupportedShell): string {
       return renderZshIntegration();
     case "bash":
       return renderBashIntegration();
+    default:
+      return exhaustiveShell(shell);
   }
 }
 
@@ -241,4 +243,8 @@ tcomp() {
   printf '%s\n' "$_tcomp_cmd"
 }
 `;
+}
+
+function exhaustiveShell(value: never): never {
+  throw new Error(`Unsupported shell: ${value}`);
 }

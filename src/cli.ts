@@ -1,18 +1,28 @@
 #!/usr/bin/env bun
 import { basename } from "node:path";
 import {
-  parseArgs,
   ArgParseError,
-  helpText,
   type ConfigModeArgs,
+  helpText,
+  type ParsedArgs,
+  parseArgs,
   type SetupModeArgs,
   type UseModeArgs,
 } from "./args";
 import { loadCodexChatGPTAuth, runCodexCliAuthAction } from "./codex-auth";
-import { askLine, canPromptInteractively, confirm, selectWithArrows, type SelectOption } from "./interactive";
+import {
+  askLine,
+  canPromptInteractively,
+  confirm,
+  type SelectOption,
+  selectWithArrows,
+} from "./interactive";
 import { generatePromptResponse, generateSuggestion } from "./openai";
 import { isSupportedShell, type SupportedShell } from "./shell";
-import { installShellIntegration, isShellIntegrationInstalled } from "./shell-install";
+import {
+  installShellIntegration,
+  isShellIntegrationInstalled,
+} from "./shell-install";
 import type { ProviderName, RuntimeContext, Suggestion } from "./types";
 import { loadUserConfig, saveUserConfig } from "./user-config";
 import { APP_BUILD_TIME, VERSION } from "./version";
@@ -21,6 +31,8 @@ const COLOR_ENABLED =
   process.env.NO_COLOR === undefined &&
   process.env.TERM !== "dumb" &&
   Boolean(process.stdout.isTTY || process.stderr.isTTY);
+const HELP_HEADER_REGEX =
+  /^(Usage:|Practical examples:|Common flags \(prompt mode\):)$/;
 
 function color(text: string, ansiCode: string): string {
   if (!COLOR_ENABLED) {
@@ -106,7 +118,7 @@ function colorizeHelp(text: string): string {
   return text
     .split("\n")
     .map((line) => {
-      if (/^(Usage:|Practical examples:|Common flags \(prompt mode\):)$/.test(line)) {
+      if (HELP_HEADER_REGEX.test(line)) {
         return heading(line);
       }
       if (line.startsWith("  tcomp ")) {
@@ -126,8 +138,8 @@ function printSuggestionHuman(suggestion: Suggestion, explain: boolean) {
     printFailure(reason);
     printInfo(
       `For general prompts, use ${commandText("tcomp --prompt <question>")} (or ${commandText(
-        "tcomp -p <question>",
-      )}).`,
+        "tcomp -p <question>"
+      )}).`
     );
     process.exit(2);
   }
@@ -138,7 +150,7 @@ function printSuggestionHuman(suggestion: Suggestion, explain: boolean) {
     }
     if (suggestion.risk !== "low" || suggestion.needsConfirmation) {
       console.error(
-        `${label("risk:")} ${suggestion.risk}${suggestion.needsConfirmation ? " (confirm before running)" : ""}`,
+        `${label("risk:")} ${suggestion.risk}${suggestion.needsConfirmation ? " (confirm before running)" : ""}`
       );
     }
   }
@@ -150,18 +162,24 @@ function setupRequirementErrors(): string[] {
   const errors: string[] = [];
 
   if (!process.versions.bun) {
-    errors.push("Bun runtime is required. Install Bun: https://bun.sh/docs/installation");
+    errors.push(
+      "Bun runtime is required. Install Bun: https://bun.sh/docs/installation"
+    );
   }
 
   const shell = shellNameFromEnv();
   if (!isSupportedShell(shell)) {
-    errors.push(`zsh or bash is required for setup. Detected SHELL=\"${shell}\".`);
+    errors.push(
+      `zsh or bash is required for setup. Detected SHELL="${shell}".`
+    );
   }
 
   return errors;
 }
 
-function defaultProvider(config: Awaited<ReturnType<typeof loadUserConfig>>): ProviderName {
+function defaultProvider(
+  config: Awaited<ReturnType<typeof loadUserConfig>>
+): ProviderName {
   if (config.activeProvider === "openai" || config.activeProvider === "codex") {
     return config.activeProvider;
   }
@@ -169,7 +187,7 @@ function defaultProvider(config: Awaited<ReturnType<typeof loadUserConfig>>): Pr
 }
 
 async function chooseProvider(current: ProviderName): Promise<ProviderName> {
-  const options: Array<SelectOption<ProviderName>> = [
+  const options: SelectOption<ProviderName>[] = [
     { label: "OpenAI OAuth (via Codex CLI)", value: "codex" },
     { label: "OpenAI API key", value: "openai" },
   ];
@@ -181,18 +199,22 @@ async function chooseProvider(current: ProviderName): Promise<ProviderName> {
 type OAuthLoginMethod = "browser" | "device";
 
 async function chooseOAuthLoginMethod(): Promise<OAuthLoginMethod> {
-  const options: Array<SelectOption<OAuthLoginMethod>> = [
+  const options: SelectOption<OAuthLoginMethod>[] = [
     { label: "Browser login", value: "browser" },
     { label: "Device login (code entry)", value: "device" },
   ];
-  return await selectWithArrows("Select OpenAI OAuth login method:", options, 0);
+  return await selectWithArrows(
+    "Select OpenAI OAuth login method:",
+    options,
+    0
+  );
 }
 
 function printSourceInstructions(path: string) {
   printInfo(
     `Automatic ${commandText("source")} is not possible from a child CLI process. Run ${commandText(
-      `source ${path}`,
-    )} in your current shell.`,
+      `source ${path}`
+    )} in your current shell.`
   );
 }
 
@@ -218,7 +240,7 @@ async function runProviderSetup(provider: ProviderName): Promise<number> {
       ...config,
       activeProvider: "codex",
     });
-    printSuccess(`Saved active provider \"codex\" to ${path}`);
+    printSuccess(`Saved active provider "codex" to ${path}`);
     return 0;
   }
 
@@ -239,8 +261,39 @@ async function runProviderSetup(provider: ProviderName): Promise<number> {
     activeProvider: "openai",
     openaiApiKey: apiKey,
   });
-  printSuccess(`Saved active provider \"openai\" to ${path}`);
+  printSuccess(`Saved active provider "openai" to ${path}`);
   return 0;
+}
+
+async function maybeOfferShellInstall(
+  setupShell: SupportedShell,
+  offerShellInstall: boolean
+): Promise<void> {
+  if (!offerShellInstall) {
+    return;
+  }
+
+  const shellInstalled = await isShellIntegrationInstalled(setupShell);
+  if (shellInstalled) {
+    return;
+  }
+
+  const shouldInstallShell = await confirm(
+    `Install ${setupShell} shell integration + completions now?`,
+    true
+  );
+
+  if (!shouldInstallShell) {
+    printWarning("Skipped shell integration install.");
+    return;
+  }
+
+  const installResult = await installShellIntegration(setupShell);
+  const installMessage = installResult.updated
+    ? `Installed tcomp shell integration in ${installResult.path}`
+    : `tcomp shell integration already installed in ${installResult.path}`;
+  printSuccess(installMessage);
+  printSourceInstructions(installResult.path);
 }
 
 async function runSetupFlow(options: {
@@ -250,12 +303,16 @@ async function runSetupFlow(options: {
   offerShellInstall?: boolean;
 }): Promise<number> {
   if (!canPromptInteractively()) {
-    printFailure(`Setup requires an interactive terminal. Run ${commandText("tcomp setup")} in a TTY.`);
+    printFailure(
+      `Setup requires an interactive terminal. Run ${commandText("tcomp setup")} in a TTY.`
+    );
     return 1;
   }
 
   if (options.legacyAlias) {
-    printWarning(`\"${options.legacyAlias}\" has been replaced by ${commandText("tcomp setup")}.`);
+    printWarning(
+      `"${options.legacyAlias}" has been replaced by ${commandText("tcomp setup")}.`
+    );
   }
 
   const requirementErrors = setupRequirementErrors();
@@ -268,36 +325,24 @@ async function runSetupFlow(options: {
 
   const setupShell = setupShellFromEnv();
   if (!setupShell) {
-    printFailure("Could not detect a supported shell from SHELL. Expected zsh or bash.");
+    printFailure(
+      "Could not detect a supported shell from SHELL. Expected zsh or bash."
+    );
     return 1;
   }
 
   if (options.showWelcome) {
     console.log(heading("tcomp setup"));
-    printInfo(`Welcome. Setup configures provider auth and optional ${setupShell} integration.`);
+    printInfo(
+      `Welcome. Setup configures provider auth and optional ${setupShell} integration.`
+    );
   }
 
-  if (options.offerShellInstall !== false) {
-    const shellInstalled = await isShellIntegrationInstalled(setupShell);
-    if (!shellInstalled) {
-      const shouldInstallShell = await confirm(`Install ${setupShell} shell integration + completions now?`, true);
-
-      if (shouldInstallShell) {
-        const installResult = await installShellIntegration(setupShell);
-        if (installResult.updated) {
-          printSuccess(`Installed tcomp shell integration in ${installResult.path}`);
-        } else {
-          printSuccess(`tcomp shell integration already installed in ${installResult.path}`);
-        }
-        printSourceInstructions(installResult.path);
-      } else {
-        printWarning("Skipped shell integration install.");
-      }
-    }
-  }
+  await maybeOfferShellInstall(setupShell, options.offerShellInstall !== false);
 
   const config = await loadUserConfig();
-  const provider = options.provider ?? (await chooseProvider(defaultProvider(config)));
+  const provider =
+    options.provider ?? (await chooseProvider(defaultProvider(config)));
   const code = await runProviderSetup(provider);
   if (code === 0) {
     printSuccess(`Setup complete. Active provider: ${providerLabel(provider)}`);
@@ -311,7 +356,10 @@ async function hasCompletedSetup(): Promise<boolean> {
     return true;
   }
 
-  if (config.activeProvider === "openai" && Boolean(config.openaiApiKey?.trim())) {
+  if (
+    config.activeProvider === "openai" &&
+    Boolean(config.openaiApiKey?.trim())
+  ) {
     return true;
   }
 
@@ -323,7 +371,10 @@ async function ensureSetupBeforeSuggestion(): Promise<void> {
     return;
   }
 
-  const code = await runSetupFlow({ showWelcome: true, offerShellInstall: true });
+  const code = await runSetupFlow({
+    showWelcome: true,
+    offerShellInstall: true,
+  });
   if (code !== 0) {
     process.exit(code);
   }
@@ -355,15 +406,21 @@ async function handleConfigCommand(args: ConfigModeArgs): Promise<number> {
   console.log(heading("tcomp config"));
   console.log(`${label("Active provider:")} ${commandText(activeProvider)}`);
   console.log(
-    `${label("OpenAI OAuth:")} ${codexConfigured ? statusOk("configured") : statusWarn("not configured")}`,
+    `${label("OpenAI OAuth:")} ${codexConfigured ? statusOk("configured") : statusWarn("not configured")}`
   );
   console.log(
-    `${label("OpenAI API key:")} ${openaiConfigured ? statusOk("configured") : statusWarn("not configured")}`,
+    `${label("OpenAI API key:")} ${openaiConfigured ? statusOk("configured") : statusWarn("not configured")}`
   );
   console.log("");
-  printInfo(`Run ${commandText("tcomp config codex")} to run OpenAI OAuth setup (browser or device login).`);
-  printInfo(`Run ${commandText("tcomp config openai")} to set/update your OpenAI API key.`);
-  printInfo(`Run ${commandText("tcomp use codex")} or ${commandText("tcomp use openai")} to switch providers.`);
+  printInfo(
+    `Run ${commandText("tcomp config codex")} to run OpenAI OAuth setup (browser or device login).`
+  );
+  printInfo(
+    `Run ${commandText("tcomp config openai")} to set/update your OpenAI API key.`
+  );
+  printInfo(
+    `Run ${commandText("tcomp use codex")} or ${commandText("tcomp use openai")} to switch providers.`
+  );
   printInfo(`Run ${commandText("tcomp setup")} to run full onboarding again.`);
   return 0;
 }
@@ -375,20 +432,24 @@ async function handleUseCommand(args: UseModeArgs): Promise<number> {
     activeProvider: args.provider,
   });
 
-  printSuccess(`Active provider set to ${providerLabel(args.provider)} in ${path}`);
+  printSuccess(
+    `Active provider set to ${providerLabel(args.provider)} in ${path}`
+  );
 
   if (args.provider === "openai" && !config.openaiApiKey?.trim()) {
     printWarning(
       `OpenAI API key is not configured. Run ${commandText("tcomp config openai")} or ${commandText(
-        "tcomp setup",
-      )}.`,
+        "tcomp setup"
+      )}.`
     );
   }
 
   if (args.provider === "codex") {
     const codexReady = await isCodexConfigured();
     if (!codexReady) {
-      printWarning(`Codex auth not configured yet. Run ${commandText("tcomp config codex")} if needed.`);
+      printWarning(
+        `Codex auth not configured yet. Run ${commandText("tcomp config codex")} if needed.`
+      );
     }
   }
 
@@ -399,7 +460,10 @@ async function main() {
   const rawArgv = process.argv.slice(2);
   if (rawArgv.length === 0) {
     if (!(await hasCompletedSetup())) {
-      const code = await runSetupFlow({ showWelcome: true, offerShellInstall: true });
+      const code = await runSetupFlow({
+        showWelcome: true,
+        offerShellInstall: true,
+      });
       process.exit(code);
     }
 
@@ -407,7 +471,7 @@ async function main() {
     return;
   }
 
-  let args;
+  let args: ParsedArgs;
   try {
     args = parseArgs(rawArgv);
   } catch (error) {

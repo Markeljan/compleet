@@ -4,13 +4,13 @@ export type ProviderName = "codex" | "openai";
 export interface Suggestion {
   command: string;
   explanation: string;
-  risk: RiskLevel;
   needsConfirmation: boolean;
+  risk: RiskLevel;
 }
 
 export interface RuntimeContext {
   cwd: string;
-  shell: string;
-  platform: NodeJS.Platform;
   homeDir: string;
+  platform: NodeJS.Platform;
+  shell: string;
 }

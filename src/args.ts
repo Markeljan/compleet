@@ -1,16 +1,16 @@
 import type { ProviderName } from "./types";
 
 export interface SuggestModeArgs {
+  explain: boolean;
   mode: "suggest";
   prompt: string;
-  explain: boolean;
   promptMode: boolean;
 }
 
 export interface SetupModeArgs {
+  legacyAlias?: "auth" | "init";
   mode: "setup";
   provider?: ProviderName;
-  legacyAlias?: "auth" | "init";
 }
 
 export interface ConfigModeArgs {
@@ -72,13 +72,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
 function parseSetupArgs(
   argv: string[],
-  legacyAlias?: SetupModeArgs["legacyAlias"],
+  legacyAlias?: SetupModeArgs["legacyAlias"]
 ): SetupModeArgs | HelpModeArgs {
   if (argv.length === 0) {
     return { mode: "setup", legacyAlias };
   }
 
-  if (argv.length === 1 && (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")) {
+  if (
+    argv.length === 1 &&
+    (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")
+  ) {
     return { mode: "help" };
   }
 
@@ -86,7 +89,9 @@ function parseSetupArgs(
     return { mode: "setup", provider: parseProvider(argv[0]), legacyAlias };
   }
 
-  throw new ArgParseError("Unknown setup option. Use: tcomp setup [codex|openai]");
+  throw new ArgParseError(
+    "Unknown setup option. Use: tcomp setup [codex|openai]"
+  );
 }
 
 function parseConfigArgs(argv: string[]): ConfigModeArgs | HelpModeArgs {
@@ -94,7 +99,10 @@ function parseConfigArgs(argv: string[]): ConfigModeArgs | HelpModeArgs {
     return { mode: "config" };
   }
 
-  if (argv.length === 1 && (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")) {
+  if (
+    argv.length === 1 &&
+    (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")
+  ) {
     return { mode: "help" };
   }
 
@@ -102,11 +110,16 @@ function parseConfigArgs(argv: string[]): ConfigModeArgs | HelpModeArgs {
     return { mode: "config", provider: parseProvider(argv[0]) };
   }
 
-  throw new ArgParseError("Unknown config option. Use: tcomp config [codex|openai]");
+  throw new ArgParseError(
+    "Unknown config option. Use: tcomp config [codex|openai]"
+  );
 }
 
 function parseUseArgs(argv: string[]): UseModeArgs | HelpModeArgs {
-  if (argv.length === 1 && (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")) {
+  if (
+    argv.length === 1 &&
+    (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")
+  ) {
     return { mode: "help" };
   }
 
@@ -152,7 +165,7 @@ function parseSuggestArgs(argv: string[]): SuggestModeArgs | HelpModeArgs {
   const prompt = positionals.join(" ").trim();
   if (!prompt) {
     throw new ArgParseError(
-      'Missing prompt. For general prompts, use "tcomp --prompt <question>" (or "tcomp -p <question>").',
+      'Missing prompt. For general prompts, use "tcomp --prompt <question>" (or "tcomp -p <question>").'
     );
   }
 
@@ -169,7 +182,9 @@ function parseProvider(input: string): ProviderName {
   if (value === "codex" || value === "openai") {
     return value;
   }
-  throw new ArgParseError(`Unsupported provider: ${input} (expected codex or openai)`);
+  throw new ArgParseError(
+    `Unsupported provider: ${input} (expected codex or openai)`
+  );
 }
 
 export function helpText(): string {
