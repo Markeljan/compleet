@@ -1,13 +1,15 @@
-type SupportedShell = "zsh";
+export type SupportedShell = "zsh" | "bash";
 
 export function isSupportedShell(value: string): value is SupportedShell {
-  return value === "zsh";
+  return value === "zsh" || value === "bash";
 }
 
 export function renderShellIntegration(shell: SupportedShell): string {
   switch (shell) {
     case "zsh":
       return renderZshIntegration();
+    case "bash":
+      return renderBashIntegration();
   }
 }
 
@@ -137,7 +139,106 @@ tcomp() {
     return 1
   fi
 
-  _TCOMP_PENDING_BUFFER="$_tcomp_cmd"
+_TCOMP_PENDING_BUFFER="$_tcomp_cmd"
+}
+`;
+}
+
+function renderBashIntegration(): string {
+  return String.raw`# tcomp bash integration
+# Commands are shown in an editable prompt when supported by your Bash
+# version. They are not auto-executed.
+
+_tcomp_find_bin() {
+  if command -v tcomp >/dev/null 2>&1; then
+    printf '%s' 'tcomp'
+    return 0
+  fi
+  if command -v terminal-complete >/dev/null 2>&1; then
+    printf '%s' 'terminal-complete'
+    return 0
+  fi
+  printf '%s\n' 'tcomp binary not found in PATH' >&2
+  return 1
+}
+
+_TCOMP_BASH_READ_INITIAL_SUPPORTED=0
+if help read 2>/dev/null | grep -q -- "-i"; then
+  _TCOMP_BASH_READ_INITIAL_SUPPORTED=1
+fi
+
+_tcomp_complete() {
+  local cur
+  COMPREPLY=()
+  cur="\${COMP_WORDS[COMP_CWORD]}"
+
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "setup config use help version" -- "$cur") )
+    return 0
+  fi
+
+  case "\${COMP_WORDS[1]}" in
+    setup|config|use)
+      COMPREPLY=( $(compgen -W "codex openai" -- "$cur") )
+      return 0
+      ;;
+  esac
+
+  COMPREPLY=( $(compgen -W "--prompt -p --explain -e" -- "$cur") )
+}
+
+if [[ $- == *i* ]]; then
+  complete -o default -F _tcomp_complete tcomp terminal-complete 2>/dev/null || true
+fi
+
+tcomp() {
+  local _tcomp_bin _tcomp_cmd arg _tcomp_edit
+  _tcomp_bin="$(_tcomp_find_bin)" || return 1
+
+  if [[ $# -eq 0 ]]; then
+    command "$_tcomp_bin"
+    return $?
+  fi
+
+  case "$1" in
+    setup|config|use|auth|init|help|version|suggest|-h|--help|-v|--version)
+      command "$_tcomp_bin" "$@"
+      return $?
+      ;;
+  esac
+
+  # Passthrough modes that should print output directly.
+  for arg in "$@"; do
+    case "$arg" in
+      --prompt|-p)
+        command "$_tcomp_bin" "$@"
+        return $?
+        ;;
+    esac
+  done
+
+  _tcomp_cmd="$(command "$_tcomp_bin" "$@")" || return $?
+
+  if [[ -z "$_tcomp_cmd" ]]; then
+    printf '%s\n' 'No command generated.' >&2
+    return 1
+  fi
+
+  if [[ -t 0 && -t 1 && "$_TCOMP_BASH_READ_INITIAL_SUPPORTED" -eq 1 ]]; then
+    if read -r -e -i "$_tcomp_cmd" -p "tcomp> " _tcomp_edit; then
+      if [[ -n "$_tcomp_edit" ]]; then
+        history -s "$_tcomp_edit"
+        printf '%s\n' "$_tcomp_edit"
+      fi
+      return 0
+    fi
+    return 1
+  fi
+
+  if [[ -t 1 ]]; then
+    history -s "$_tcomp_cmd"
+  fi
+  printf '%s\n' "$_tcomp_cmd"
 }
 `;
 }

@@ -4,7 +4,7 @@ AI CLI for turning natural language into terminal commands with `tcomp`.
 
 ## Requirements
 
-- `zsh`
+- `zsh` or `bash`
 - `bun` (runtime required by npm-installed `tcomp` launcher)
 
 ## Build binary
@@ -53,15 +53,19 @@ tcomp
 Setup flow:
 
 - Shows welcome and requirement checks.
-- Offers zsh integration install first (`Y/n`, default is `Yes`).
+- Offers shell integration install first (`Y/n`, default is `Yes`).
 - Lets you choose provider auth:
-  - `codex` (OAuth via Codex CLI login)
+  - `codex` (OpenAI OAuth via Codex CLI, with browser or device login)
   - `openai` (API key)
 
 After shell integration install, `tcomp` prints exactly what to run to activate it in your current shell:
 
 ```bash
+# zsh
 source ~/.zshrc
+
+# bash
+source ~/.bashrc
 ```
 
 ## Practical usage examples

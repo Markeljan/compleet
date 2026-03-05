@@ -17,6 +17,10 @@ export interface CodexChatGPTAuth {
   accountId?: string;
 }
 
+export interface CodexLoginOptions {
+  deviceAuth?: boolean;
+}
+
 export function getCodexHome(): string {
   return process.env.CODEX_HOME ?? join(homedir(), ".codex");
 }
@@ -84,10 +88,15 @@ export async function ensureCodexChatGPTAuth(interactive: boolean): Promise<Code
   }
 }
 
-export async function runCodexCliAuthAction(action: "login" | "status" | "logout"): Promise<number> {
+export async function runCodexCliAuthAction(
+  action: "login" | "status" | "logout",
+  options: CodexLoginOptions = {},
+): Promise<number> {
   const args =
     action === "login"
-      ? ["login"]
+      ? options.deviceAuth
+        ? ["login", "--device-auth"]
+        : ["login"]
       : action === "status"
         ? ["login", "status"]
         : ["logout"];

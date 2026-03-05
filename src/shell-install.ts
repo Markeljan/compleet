@@ -1,9 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { renderShellIntegration } from "./shell";
-
-type SupportedShell = "zsh";
+import { renderShellIntegration, type SupportedShell } from "./shell";
 
 interface InstallResult {
   path: string;
@@ -11,14 +9,10 @@ interface InstallResult {
 }
 
 export async function installShellIntegration(shell: SupportedShell): Promise<InstallResult> {
-  if (shell !== "zsh") {
-    throw new Error(`Unsupported shell for install: ${shell}`);
-  }
-
-  const rcPath = getZshRcPath();
+  const rcPath = getRcPath(shell);
   const markerStart = "# >>> tcomp integration >>>";
   const markerEnd = "# <<< tcomp integration <<<";
-  const integration = renderShellIntegration("zsh").trimEnd();
+  const integration = renderShellIntegration(shell).trimEnd();
   const block = `${markerStart}\n${integration}\n${markerEnd}`;
 
   let existing = "";
@@ -41,11 +35,7 @@ export async function installShellIntegration(shell: SupportedShell): Promise<In
 }
 
 export async function isShellIntegrationInstalled(shell: SupportedShell): Promise<boolean> {
-  if (shell !== "zsh") {
-    return false;
-  }
-
-  const rcPath = getZshRcPath();
+  const rcPath = getRcPath(shell);
   const markerStart = "# >>> tcomp integration >>>";
   const markerEnd = "# <<< tcomp integration <<<";
 
@@ -65,12 +55,25 @@ export async function isShellIntegrationInstalled(shell: SupportedShell): Promis
 }
 
 function getZshRcPath(): string {
-  const home = homedir();
+  const home = resolveHomeDir();
   const zdotdir = process.env.ZDOTDIR?.trim();
   if (zdotdir) {
     return join(zdotdir, ".zshrc");
   }
   return join(home, ".zshrc");
+}
+
+function getBashRcPath(): string {
+  return join(resolveHomeDir(), ".bashrc");
+}
+
+function getRcPath(shell: SupportedShell): string {
+  switch (shell) {
+    case "zsh":
+      return getZshRcPath();
+    case "bash":
+      return getBashRcPath();
+  }
 }
 
 function upsertManagedBlock(existing: string, start: string, end: string, block: string): string {
@@ -100,4 +103,12 @@ function isFileMissing(error: unknown): boolean {
     "code" in error &&
     (error as { code?: string }).code === "ENOENT"
   );
+}
+
+function resolveHomeDir(): string {
+  const envHome = process.env.HOME?.trim() || process.env.USERPROFILE?.trim();
+  if (envHome) {
+    return envHome;
+  }
+  return homedir();
 }

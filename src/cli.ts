@@ -11,6 +11,7 @@ import {
 import { loadCodexChatGPTAuth, runCodexCliAuthAction } from "./codex-auth";
 import { askLine, canPromptInteractively, confirm, selectWithArrows, type SelectOption } from "./interactive";
 import { generatePromptResponse, generateSuggestion } from "./openai";
+import { isSupportedShell, type SupportedShell } from "./shell";
 import { installShellIntegration, isShellIntegrationInstalled } from "./shell-install";
 import type { ProviderName, RuntimeContext, Suggestion } from "./types";
 import { loadUserConfig, saveUserConfig } from "./user-config";
@@ -74,6 +75,14 @@ function shellNameFromEnv(): string {
     return "unknown";
   }
   return basename(shell);
+}
+
+function setupShellFromEnv(): SupportedShell | null {
+  const shell = shellNameFromEnv();
+  if (isSupportedShell(shell)) {
+    return shell;
+  }
+  return null;
 }
 
 function buildRuntimeContext(): RuntimeContext {
@@ -145,8 +154,8 @@ function setupRequirementErrors(): string[] {
   }
 
   const shell = shellNameFromEnv();
-  if (shell !== "zsh") {
-    errors.push(`zsh is required for setup. Detected SHELL=\"${shell}\".`);
+  if (!isSupportedShell(shell)) {
+    errors.push(`zsh or bash is required for setup. Detected SHELL=\"${shell}\".`);
   }
 
   return errors;
@@ -161,12 +170,22 @@ function defaultProvider(config: Awaited<ReturnType<typeof loadUserConfig>>): Pr
 
 async function chooseProvider(current: ProviderName): Promise<ProviderName> {
   const options: Array<SelectOption<ProviderName>> = [
-    { label: "Codex OAuth", value: "codex" },
+    { label: "OpenAI OAuth (via Codex CLI)", value: "codex" },
     { label: "OpenAI API key", value: "openai" },
   ];
 
   const defaultIndex = current === "openai" ? 1 : 0;
   return await selectWithArrows("Select provider:", options, defaultIndex);
+}
+
+type OAuthLoginMethod = "browser" | "device";
+
+async function chooseOAuthLoginMethod(): Promise<OAuthLoginMethod> {
+  const options: Array<SelectOption<OAuthLoginMethod>> = [
+    { label: "Browser login", value: "browser" },
+    { label: "Device login (code entry)", value: "device" },
+  ];
+  return await selectWithArrows("Select OpenAI OAuth login method:", options, 0);
 }
 
 function printSourceInstructions(path: string) {
@@ -181,8 +200,16 @@ async function runProviderSetup(provider: ProviderName): Promise<number> {
   const config = await loadUserConfig();
 
   if (provider === "codex") {
-    printInfo("Starting Codex OAuth login flow...");
-    const code = await runCodexCliAuthAction("login");
+    const loginMethod = await chooseOAuthLoginMethod();
+    const deviceAuth = loginMethod === "device";
+
+    if (deviceAuth) {
+      printInfo("Starting OpenAI OAuth device login flow...");
+    } else {
+      printInfo("Starting OpenAI OAuth browser login flow...");
+    }
+
+    const code = await runCodexCliAuthAction("login", { deviceAuth });
     if (code !== 0) {
       return code;
     }
@@ -239,18 +266,24 @@ async function runSetupFlow(options: {
     return 1;
   }
 
+  const setupShell = setupShellFromEnv();
+  if (!setupShell) {
+    printFailure("Could not detect a supported shell from SHELL. Expected zsh or bash.");
+    return 1;
+  }
+
   if (options.showWelcome) {
     console.log(heading("tcomp setup"));
-    printInfo("Welcome. Setup configures provider auth and optional zsh integration.");
+    printInfo(`Welcome. Setup configures provider auth and optional ${setupShell} integration.`);
   }
 
   if (options.offerShellInstall !== false) {
-    const shellInstalled = await isShellIntegrationInstalled("zsh");
+    const shellInstalled = await isShellIntegrationInstalled(setupShell);
     if (!shellInstalled) {
-      const shouldInstallShell = await confirm("Install zsh shell integration + completions now?", true);
+      const shouldInstallShell = await confirm(`Install ${setupShell} shell integration + completions now?`, true);
 
       if (shouldInstallShell) {
-        const installResult = await installShellIntegration("zsh");
+        const installResult = await installShellIntegration(setupShell);
         if (installResult.updated) {
           printSuccess(`Installed tcomp shell integration in ${installResult.path}`);
         } else {
@@ -321,12 +354,14 @@ async function handleConfigCommand(args: ConfigModeArgs): Promise<number> {
 
   console.log(heading("tcomp config"));
   console.log(`${label("Active provider:")} ${commandText(activeProvider)}`);
-  console.log(`${label("Codex OAuth:")} ${codexConfigured ? statusOk("configured") : statusWarn("not configured")}`);
+  console.log(
+    `${label("OpenAI OAuth:")} ${codexConfigured ? statusOk("configured") : statusWarn("not configured")}`,
+  );
   console.log(
     `${label("OpenAI API key:")} ${openaiConfigured ? statusOk("configured") : statusWarn("not configured")}`,
   );
   console.log("");
-  printInfo(`Run ${commandText("tcomp config codex")} to run Codex OAuth setup.`);
+  printInfo(`Run ${commandText("tcomp config codex")} to run OpenAI OAuth setup (browser or device login).`);
   printInfo(`Run ${commandText("tcomp config openai")} to set/update your OpenAI API key.`);
   printInfo(`Run ${commandText("tcomp use codex")} or ${commandText("tcomp use openai")} to switch providers.`);
   printInfo(`Run ${commandText("tcomp setup")} to run full onboarding again.`);
