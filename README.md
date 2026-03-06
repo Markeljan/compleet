@@ -129,7 +129,3 @@ tcomp use openai
 - `tcomp use <codex|openai>`
 - `tcomp help`
 - `tcomp version`
-
-## Maintainers
-
-Release and npm publishing docs: `docs/releasing.md`

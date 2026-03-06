@@ -44,15 +44,11 @@
     "fix": "ultracite fix",
     "test": "bun test",
     "ci": "bun run check && bun test",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "changeset publish",
     "prepublishOnly": "bun run ci",
     "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.0",
-    "@changesets/cli": "^2.30.0",
     "lefthook": "^2.1.2",
     "ultracite": "7.2.4"
   }
