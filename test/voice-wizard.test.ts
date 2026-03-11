@@ -19,12 +19,6 @@ describe("buildVoiceSetupOptionLabels", () => {
           },
           {
             available: false,
-            guidance: ["Install faster-whisper"],
-            name: "faster-whisper",
-            summary: "Not installed.",
-          },
-          {
-            available: false,
             guidance: ["tc config openai"],
             name: "openai-api",
             summary: "Not configured.",
@@ -32,7 +26,6 @@ describe("buildVoiceSetupOptionLabels", () => {
         ],
       },
       {
-        canAutoInstallFasterWhisper: true,
         canAutoInstallFfmpeg: true,
         canAutoInstallWhisperCpp: true,
       }
@@ -40,8 +33,8 @@ describe("buildVoiceSetupOptionLabels", () => {
 
     expect(labels[0]).toBe("Install ffmpeg now (Recommended)");
     expect(labels[1]).toBe("Set up whisper.cpp locally (Recommended)");
-    expect(labels[2]).toBe("Install faster-whisper locally");
-    expect(labels[3]).toBe("Use an OpenAI API key fallback");
+    expect(labels[2]).toBe("Use an OpenAI API key fallback");
+    expect(labels).toHaveLength(5);
     expect(labels.at(-2)).toBe("Show setup details again");
     expect(labels.at(-1)).toBe("Cancel");
   });

@@ -5,11 +5,8 @@ import type { ProviderName } from "./types";
 
 export interface VoiceConfig {
   audioInputDevice?: string;
-  fasterWhisperModel?: string;
   ffmpegBin?: string;
   openAiTranscribeModel?: string;
-  pythonBin?: string;
-  transcribeLanguage?: string;
   transcribePrompt?: string;
   whisperCppBin?: string;
   whisperCppModelPath?: string;
@@ -103,13 +100,10 @@ function parseUserConfig(raw: string): UserConfig {
     voice: voiceObj
       ? {
           audioInputDevice: normalizeString(voiceObj.audioInputDevice),
-          fasterWhisperModel: normalizeString(voiceObj.fasterWhisperModel),
           ffmpegBin: normalizeString(voiceObj.ffmpegBin),
           openAiTranscribeModel: normalizeString(
             voiceObj.openAiTranscribeModel
           ),
-          pythonBin: normalizeString(voiceObj.pythonBin),
-          transcribeLanguage: normalizeString(voiceObj.transcribeLanguage),
           transcribePrompt: normalizeString(voiceObj.transcribePrompt),
           whisperCppBin: normalizeString(voiceObj.whisperCppBin),
           whisperCppModelPath: normalizeString(voiceObj.whisperCppModelPath),

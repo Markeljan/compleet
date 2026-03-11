@@ -15,7 +15,7 @@ const OPENAI_TRANSCRIPTIONS_URL =
 export interface TranscriptionBackendStatus {
   available: boolean;
   guidance: string[];
-  name: "faster-whisper" | "openai-api" | "whisper.cpp";
+  name: "openai-api" | "whisper.cpp";
   summary: string;
 }
 
@@ -34,12 +34,6 @@ export async function transcribe(audio: AudioBuffer): Promise<string> {
     }
 
     try {
-      return await transcribeWithFasterWhisper(audioPath, tempDir);
-    } catch (error) {
-      failures.push(describeFailure("faster-whisper", error));
-    }
-
-    try {
       return await transcribeWithOpenAI(audio);
     } catch (error) {
       failures.push(describeFailure("OpenAI speech API", error));
@@ -54,13 +48,12 @@ export async function transcribe(audio: AudioBuffer): Promise<string> {
 export async function inspectTranscriptionBackends(): Promise<
   TranscriptionBackendStatus[]
 > {
-  const [whisperCpp, fasterWhisper, openAi] = await Promise.all([
+  const [whisperCpp, openAi] = await Promise.all([
     inspectWhisperCpp(),
-    inspectFasterWhisper(),
     inspectOpenAiFallback(),
   ]);
 
-  return [whisperCpp, fasterWhisper, openAi];
+  return [whisperCpp, openAi];
 }
 
 export function buildTranscriptionSetupMessage(
@@ -132,7 +125,7 @@ async function inspectWhisperCpp(): Promise<TranscriptionBackendStatus> {
           "Manual: brew install whisper-cpp",
         ]
       : [
-          'Wizard: choose "Set up whisper.cpp locally", or install whisper.cpp manually.',
+          `Manual: install whisper.cpp, then set voice.whisperCppBin and voice.whisperCppModelPath in ${getUserConfigPath()}.`,
         ];
 
   return {
@@ -142,47 +135,6 @@ async function inspectWhisperCpp(): Promise<TranscriptionBackendStatus> {
     summary: binary
       ? "Installed, but no model is configured."
       : "Not installed.",
-  };
-}
-
-async function inspectFasterWhisper(): Promise<TranscriptionBackendStatus> {
-  const config = await loadUserConfig();
-  const python =
-    process.env.TC_PYTHON_BIN?.trim() ||
-    process.env.PYTHON_BIN?.trim() ||
-    config.voice?.pythonBin?.trim() ||
-    Bun.which("python3");
-  if (!python) {
-    return {
-      available: false,
-      guidance: [
-        "Install python3, then run: python3 -m pip install --user faster-whisper",
-      ],
-      name: "faster-whisper",
-      summary: "python3 is not available.",
-    };
-  }
-
-  const { stdout } = await runCommand(python, [
-    "-c",
-    "import importlib.util; print('1' if importlib.util.find_spec('faster_whisper') else '0')",
-  ]);
-  if (stdout.trim() === "1") {
-    return {
-      available: true,
-      guidance: [],
-      name: "faster-whisper",
-      summary: "Local faster-whisper transcription is configured.",
-    };
-  }
-
-  return {
-    available: false,
-    guidance: [
-      "Optional local fallback: python3 -m pip install --user faster-whisper",
-    ],
-    name: "faster-whisper",
-    summary: "Not installed.",
   };
 }
 
@@ -245,68 +197,6 @@ async function transcribeWithWhisperCpp(
 
   const transcript = await readFile(`${outputBase}.txt`, "utf8");
   return normalizeTranscript(transcript);
-}
-
-async function transcribeWithFasterWhisper(
-  audioPath: string,
-  tempDir: string
-): Promise<string> {
-  const config = await loadUserConfig();
-  const python =
-    process.env.TC_PYTHON_BIN?.trim() ||
-    process.env.PYTHON_BIN?.trim() ||
-    config.voice?.pythonBin?.trim() ||
-    Bun.which("python3");
-  if (!python) {
-    throw new Error("python3 is not available for faster-whisper.");
-  }
-
-  const scriptPath = join(tempDir, "faster-whisper.py");
-  const language =
-    process.env.TC_TRANSCRIBE_LANGUAGE?.trim() ||
-    config.voice?.transcribeLanguage?.trim();
-  const fasterWhisperModel =
-    process.env.TC_FASTER_WHISPER_MODEL?.trim() ||
-    config.voice?.fasterWhisperModel?.trim() ||
-    "base.en";
-  const script = [
-    "import json",
-    "from faster_whisper import WhisperModel",
-    "import sys",
-    "",
-    "audio_path = sys.argv[1]",
-    "model_name = sys.argv[2]",
-    "language = sys.argv[3] or None",
-    "model = WhisperModel(model_name, device='cpu')",
-    "segments, _ = model.transcribe(audio_path, vad_filter=True, language=language, beam_size=1)",
-    "text = ' '.join(segment.text.strip() for segment in segments if segment.text).strip()",
-    "print(json.dumps({'text': text}))",
-  ].join("\n");
-
-  await writeFile(scriptPath, script, "utf8");
-  const { stdout } = await runCommand(python, [
-    scriptPath,
-    audioPath,
-    fasterWhisperModel,
-    language ?? inferLanguageFromModel(fasterWhisperModel),
-  ]);
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stdout) as unknown;
-  } catch {
-    throw new Error("faster-whisper returned invalid JSON.");
-  }
-
-  if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    typeof (parsed as { text?: unknown }).text !== "string"
-  ) {
-    throw new Error("faster-whisper did not return transcript text.");
-  }
-
-  return normalizeTranscript((parsed as { text: string }).text);
 }
 
 async function transcribeWithOpenAI(audio: AudioBuffer): Promise<string> {
@@ -373,10 +263,6 @@ async function resolveOpenAIApiKey(): Promise<{
   }
 
   return { apiKey: "", source: "none" };
-}
-
-function inferLanguageFromModel(modelName: string): string {
-  return modelName.endsWith(".en") ? "en" : "";
 }
 
 function normalizeTranscript(input: string): string {

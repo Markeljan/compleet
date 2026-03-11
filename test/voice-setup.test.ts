@@ -14,12 +14,6 @@ const unavailableBackends: TranscriptionBackendStatus[] = [
   },
   {
     available: false,
-    guidance: ["Install faster-whisper"],
-    name: "faster-whisper",
-    summary: "The faster_whisper Python package is not installed.",
-  },
-  {
-    available: false,
     guidance: ['Optional paid fallback: run "tc config openai".'],
     name: "openai-api",
     summary: "Not configured.",
@@ -47,11 +41,12 @@ describe("hasAvailableTranscriptionBackend", () => {
 });
 
 describe("buildTranscriptionSetupMessage", () => {
-  test("keeps the setup guidance short and whisper-first", () => {
+  test("keeps the setup guidance focused on whisper.cpp and OpenAI", () => {
     const message = buildTranscriptionSetupMessage(unavailableBackends);
     expect(message).toContain("Voice transcription is not ready yet.");
     expect(message).toContain("Recommended: whisper.cpp (free, local).");
-    expect(message).toContain("Install faster-whisper");
+    expect(message).toContain("whisper.cpp: whisper.cpp is not installed.");
+    expect(message).toContain("openai-api: Not configured.");
     expect(message).not.toContain("Codex-generated OpenAI API key");
   });
 });

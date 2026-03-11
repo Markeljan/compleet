@@ -1,5 +1,11 @@
 # Compleet
 
+## 0.5.0
+
+### Minor Changes
+
+- Remove the legacy Python voice transcription backend and its setup path. Voice mode now supports local `whisper.cpp` transcription plus the OpenAI fallback only.
+
 ## 0.4.2
 
 ### Patch Changes

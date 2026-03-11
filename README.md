@@ -76,15 +76,13 @@ Output:
 Compleet tries these backends in order:
 
 1. `whisper.cpp` (recommended)
-2. `faster-whisper`
-3. OpenAI speech-to-text API
+2. OpenAI speech-to-text API
 
 When voice mode is not ready, the interactive setup wizard offers these options in order:
 
 1. Install `ffmpeg` if recording is not available.
 2. Set up `whisper.cpp` locally and download a default model.
-3. Install `faster-whisper` locally.
-4. Enter your own OpenAI API key fallback.
+3. Enter your own OpenAI API key fallback.
 
 During recording, press Enter to stop.
 

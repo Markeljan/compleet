@@ -6,7 +6,7 @@ import {
   canPromptInteractively,
   selectWithArrows,
 } from "../src/interactive";
-import { getUserConfigDir, loadUserConfig } from "../src/user-config";
+import { getUserConfigDir } from "../src/user-config";
 import {
   inspectRecordingSupport,
   type RecordingSupportStatus,
@@ -26,7 +26,6 @@ const DEFAULT_WHISPER_CPP_MODEL_URL =
 type VoiceSetupAction =
   | "cancel"
   | "enter-openai-key"
-  | "install-faster-whisper"
   | "install-ffmpeg"
   | "manual-summary"
   | "setup-whisper-cpp";
@@ -37,7 +36,6 @@ interface VoiceSetupState {
 }
 
 interface VoiceSetupCapabilities {
-  canAutoInstallFasterWhisper: boolean;
   canAutoInstallFfmpeg: boolean;
   canAutoInstallWhisperCpp: boolean;
 }
@@ -133,13 +131,6 @@ function buildVoiceSetupOptions(
       });
     }
 
-    if (capabilities.canAutoInstallFasterWhisper) {
-      options.push({
-        action: "install-faster-whisper",
-        label: "Install faster-whisper locally",
-      });
-    }
-
     options.push({
       action: "enter-openai-key",
       label: "Use an OpenAI API key fallback",
@@ -183,17 +174,10 @@ async function inspectVoiceSetupState(): Promise<VoiceSetupState> {
   };
 }
 
-async function detectVoiceSetupCapabilities(): Promise<VoiceSetupCapabilities> {
-  const config = await loadUserConfig();
-  const python =
-    process.env.TC_PYTHON_BIN?.trim() ||
-    process.env.PYTHON_BIN?.trim() ||
-    config.voice?.pythonBin?.trim() ||
-    Bun.which("python3");
+function detectVoiceSetupCapabilities(): VoiceSetupCapabilities {
   const brew = Bun.which("brew");
 
   return {
-    canAutoInstallFasterWhisper: Boolean(python),
     canAutoInstallFfmpeg: process.platform === "darwin" && Boolean(brew),
     canAutoInstallWhisperCpp: process.platform === "darwin" && Boolean(brew),
   };
@@ -206,9 +190,6 @@ async function runVoiceSetupAction(
   switch (action) {
     case "install-ffmpeg":
       await installFfmpeg(log);
-      return;
-    case "install-faster-whisper":
-      await installFasterWhisper(log);
       return;
     case "setup-whisper-cpp":
       await setupWhisperCpp(log);
@@ -227,29 +208,6 @@ async function runVoiceSetupAction(
 async function installFfmpeg(log: (message: string) => void): Promise<void> {
   log("Installing ffmpeg with Homebrew...");
   await runCommandWithInheritedOutput("brew", ["install", "ffmpeg"]);
-}
-
-async function installFasterWhisper(
-  log: (message: string) => void
-): Promise<void> {
-  const config = await loadUserConfig();
-  const python =
-    process.env.TC_PYTHON_BIN?.trim() ||
-    process.env.PYTHON_BIN?.trim() ||
-    config.voice?.pythonBin?.trim() ||
-    Bun.which("python3");
-  if (!python) {
-    throw new Error("python3 is not available for faster-whisper install.");
-  }
-
-  log("Installing faster-whisper...");
-  await runCommandWithInheritedOutput(python, [
-    "-m",
-    "pip",
-    "install",
-    "--user",
-    "faster-whisper",
-  ]);
 }
 
 async function setupWhisperCpp(log: (message: string) => void): Promise<void> {
