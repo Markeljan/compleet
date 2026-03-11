@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getCodexAuthPath, loadCodexChatGPTAuth } from "../src/codex-auth";
 import {
+  getUserConfigDir,
   getUserConfigPath,
   loadUserConfig,
   saveUserConfig,
+  updateUserConfig,
 } from "../src/user-config";
 
 describe("user config and codex auth paths", () => {
@@ -15,7 +17,7 @@ describe("user config and codex auth paths", () => {
   let sandboxDir = "";
 
   beforeEach(async () => {
-    sandboxDir = await mkdtemp(join(tmpdir(), "tcomp-config-"));
+    sandboxDir = await mkdtemp(join(tmpdir(), "compleet-config-"));
     process.env.XDG_CONFIG_HOME = join(sandboxDir, "xdg");
     process.env.CODEX_HOME = join(sandboxDir, "codex-home");
   });
@@ -39,82 +41,38 @@ describe("user config and codex auth paths", () => {
   test("saveUserConfig and loadUserConfig round-trip", async () => {
     const savedPath = await saveUserConfig({
       activeProvider: "codex",
+      voice: {
+        whisperCppModelPath: "/tmp/ggml-base.en.bin",
+      },
     });
 
     expect(savedPath).toBe(getUserConfigPath());
-    expect(savedPath).toContain(
-      join("xdg", "terminal-complete", "config.json")
-    );
+    expect(getUserConfigDir()).toContain(join("xdg", "compleet"));
 
     const loaded = await loadUserConfig();
     expect(loaded.activeProvider).toBe("codex");
     expect(loaded.openaiApiKey).toBeUndefined();
+    expect(loaded.voice?.whisperCppModelPath).toBe("/tmp/ggml-base.en.bin");
   });
 
-  test("loadUserConfig migrates legacy openai fields", async () => {
-    const configPath = getUserConfigPath();
-    await mkdir(join(sandboxDir, "xdg", "terminal-complete"), {
-      recursive: true,
+  test("updateUserConfig merges nested voice settings", async () => {
+    await saveUserConfig({
+      activeProvider: "openai",
+      openaiApiKey: "sk-test",
+      voice: {
+        whisperCppModelPath: "/tmp/model.bin",
+      },
     });
-    await writeFile(
-      configPath,
-      JSON.stringify(
-        {
-          provider: "openai",
-          apiKey: "legacy-key",
-        },
-        null,
-        2
-      ),
-      "utf8"
-    );
+
+    await updateUserConfig({
+      voice: {
+        audioInputDevice: "Built-in Microphone",
+      },
+    });
 
     const loaded = await loadUserConfig();
-    expect(loaded.activeProvider).toBe("openai");
-    expect(loaded.openaiApiKey).toBe("legacy-key");
-  });
-
-  test("loadUserConfig migrates authMethod field", async () => {
-    const configPath = getUserConfigPath();
-    await mkdir(join(sandboxDir, "xdg", "terminal-complete"), {
-      recursive: true,
-    });
-    await writeFile(
-      configPath,
-      JSON.stringify(
-        {
-          authMethod: "codex-oauth",
-        },
-        null,
-        2
-      ),
-      "utf8"
-    );
-
-    const loaded = await loadUserConfig();
-    expect(loaded.activeProvider).toBe("codex");
-  });
-
-  test("loadUserConfig infers provider when only openaiApiKey is set", async () => {
-    const configPath = getUserConfigPath();
-    await mkdir(join(sandboxDir, "xdg", "terminal-complete"), {
-      recursive: true,
-    });
-    await writeFile(
-      configPath,
-      JSON.stringify(
-        {
-          openaiApiKey: "key-only",
-        },
-        null,
-        2
-      ),
-      "utf8"
-    );
-
-    const loaded = await loadUserConfig();
-    expect(loaded.activeProvider).toBe("openai");
-    expect(loaded.openaiApiKey).toBe("key-only");
+    expect(loaded.voice?.whisperCppModelPath).toBe("/tmp/model.bin");
+    expect(loaded.voice?.audioInputDevice).toBe("Built-in Microphone");
   });
 
   test("loadUserConfig returns empty object when config file is missing", async () => {
@@ -129,6 +87,7 @@ describe("user config and codex auth paths", () => {
       authPath,
       JSON.stringify(
         {
+          OPENAI_API_KEY: "sk-codex-generated",
           auth_mode: "chatgpt",
           tokens: {
             access_token: "token-123",
@@ -144,6 +103,7 @@ describe("user config and codex auth paths", () => {
     const auth = await loadCodexChatGPTAuth();
     expect(auth.accessToken).toBe("token-123");
     expect(auth.accountId).toBe("acct-abc");
+    expect(auth.openAIApiKey).toBe("sk-codex-generated");
   });
 
   test("loadCodexChatGPTAuth rejects invalid auth mode", async () => {

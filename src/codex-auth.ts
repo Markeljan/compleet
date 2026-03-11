@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 interface RawCodexAuthFile {
   auth_mode?: unknown;
+  OPENAI_API_KEY?: unknown;
   tokens?: {
     access_token?: unknown;
     refresh_token?: unknown;
@@ -15,6 +16,7 @@ interface RawCodexAuthFile {
 export interface CodexChatGPTAuth {
   accessToken: string;
   accountId?: string;
+  openAIApiKey?: string;
 }
 
 export interface CodexLoginOptions {
@@ -38,7 +40,7 @@ export async function loadCodexChatGPTAuth(): Promise<CodexChatGPTAuth> {
   } catch (error) {
     if (isFileMissing(error)) {
       throw new Error(
-        `Codex auth not found at ${authPath}. Run "tcomp config codex" or "tcomp setup" first.`
+        `Codex auth not found at ${authPath}. Run "tc config codex" or "tc setup" first.`
       );
     }
     throw error;
@@ -65,14 +67,20 @@ export async function loadCodexChatGPTAuth(): Promise<CodexChatGPTAuth> {
     typeof parsed.tokens?.account_id === "string"
       ? parsed.tokens.account_id
       : undefined;
+  const openAIApiKey =
+    typeof parsed.OPENAI_API_KEY === "string" ? parsed.OPENAI_API_KEY : "";
 
   if (!accessToken) {
     throw new Error(
-      `Codex auth file does not contain a ChatGPT access token. Run "tcomp config codex" or "tcomp setup".`
+      `Codex auth file does not contain a ChatGPT access token. Run "tc config codex" or "tc setup".`
     );
   }
 
-  return { accessToken, accountId };
+  return {
+    accessToken,
+    accountId,
+    openAIApiKey: openAIApiKey || undefined,
+  };
 }
 
 export async function ensureCodexChatGPTAuth(

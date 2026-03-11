@@ -1,91 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   installShellIntegration,
   isShellIntegrationInstalled,
+  removeShellIntegration,
 } from "../src/shell-install";
 
 describe("installShellIntegration(zsh)", () => {
-  const originalZdotdir = process.env.ZDOTDIR;
-  let sandboxDir = "";
-
-  beforeEach(async () => {
-    sandboxDir = await mkdtemp(join(tmpdir(), "tcomp-zshrc-"));
-    process.env.ZDOTDIR = sandboxDir;
-  });
-
-  afterEach(async () => {
-    if (originalZdotdir === undefined) {
-      Reflect.deleteProperty(process.env, "ZDOTDIR");
-    } else {
-      process.env.ZDOTDIR = originalZdotdir;
-    }
-    if (sandboxDir) {
-      await rm(sandboxDir, { recursive: true, force: true });
-    }
-  });
-
-  test("writes managed block and is idempotent", async () => {
-    const first = await installShellIntegration("zsh");
-    expect(first.updated).toBe(true);
-    expect(first.path).toBe(join(sandboxDir, ".zshrc"));
-
-    const firstContent = await readFile(first.path, "utf8");
-    expect(firstContent).toContain("# >>> tcomp integration >>>");
-    expect(firstContent).toContain("# tcomp zsh integration");
-    expect(firstContent).toContain("_tcomp_find_bin");
-    expect(firstContent).toContain("# <<< tcomp integration <<<");
-
-    const second = await installShellIntegration("zsh");
-    expect(second.updated).toBe(false);
-
-    const secondContent = await readFile(second.path, "utf8");
-    expect(secondContent).toBe(firstContent);
-  });
-
-  test("replaces existing managed block in place", async () => {
-    const zshrcPath = join(sandboxDir, ".zshrc");
-    await writeFile(
-      zshrcPath,
-      [
-        'export PATH="$HOME/bin:$PATH"',
-        "# >>> tcomp integration >>>",
-        "echo legacy block",
-        "# <<< tcomp integration <<<",
-        "",
-      ].join("\n"),
-      "utf8"
-    );
-
-    const result = await installShellIntegration("zsh");
-    expect(result.updated).toBe(true);
-
-    const content = await readFile(zshrcPath, "utf8");
-    expect(content).toContain('export PATH="$HOME/bin:$PATH"');
-    expect(content).toContain("# tcomp zsh integration");
-
-    const startMatches = content.match(/# >>> tcomp integration >>>/g) ?? [];
-    const endMatches = content.match(/# <<< tcomp integration <<</g) ?? [];
-    expect(startMatches.length).toBe(1);
-    expect(endMatches.length).toBe(1);
-  });
-
-  test("detects installation markers", async () => {
-    expect(await isShellIntegrationInstalled("zsh")).toBe(false);
-    await installShellIntegration("zsh");
-    expect(await isShellIntegrationInstalled("zsh")).toBe(true);
-  });
-});
-
-describe("installShellIntegration(bash)", () => {
   const originalHome = process.env.HOME;
+  const originalZdotdir = process.env.ZDOTDIR;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   let sandboxDir = "";
+  let xdgDir = "";
 
   beforeEach(async () => {
-    sandboxDir = await mkdtemp(join(tmpdir(), "tcomp-bashrc-"));
+    sandboxDir = await mkdtemp(join(tmpdir(), "compleet-zshrc-"));
+    xdgDir = join(sandboxDir, "xdg");
     process.env.HOME = sandboxDir;
+    process.env.ZDOTDIR = sandboxDir;
+    process.env.XDG_CONFIG_HOME = xdgDir;
   });
 
   afterEach(async () => {
@@ -94,59 +30,145 @@ describe("installShellIntegration(bash)", () => {
     } else {
       process.env.HOME = originalHome;
     }
+
+    if (originalZdotdir === undefined) {
+      Reflect.deleteProperty(process.env, "ZDOTDIR");
+    } else {
+      process.env.ZDOTDIR = originalZdotdir;
+    }
+
+    if (originalXdgConfigHome === undefined) {
+      Reflect.deleteProperty(process.env, "XDG_CONFIG_HOME");
+    } else {
+      process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+
     if (sandboxDir) {
       await rm(sandboxDir, { recursive: true, force: true });
     }
   });
 
-  test("writes managed block and is idempotent", async () => {
+  test("writes a small rc loader and stores a single init script", async () => {
+    const first = await installShellIntegration("zsh");
+    expect(first.updated).toBe(true);
+    expect(first.path).toBe(join(sandboxDir, ".zshrc"));
+
+    const rcContent = await readFile(first.path, "utf8");
+    expect(rcContent).toContain("# >>> compleet integration >>>");
+    expect(rcContent).toContain(". '");
+    expect(rcContent).not.toContain("_tc_find_bin");
+
+    const initPath = join(xdgDir, "compleet", "shell", "zsh", "init.zsh");
+    const initContent = await readFile(initPath, "utf8");
+    expect(initContent).toContain("# Compleet zsh integration");
+    expect(initContent).toContain("_tc_find_bin");
+    expect(initContent).not.toContain("compdef _tc tc compleet");
+
+    const second = await installShellIntegration("zsh");
+    expect(second.updated).toBe(false);
+    expect(await readFile(second.path, "utf8")).toBe(rcContent);
+  });
+
+  test("detects installation markers and the init script", async () => {
+    expect(await isShellIntegrationInstalled("zsh")).toBe(false);
+    await installShellIntegration("zsh");
+    expect(await isShellIntegrationInstalled("zsh")).toBe(true);
+  });
+
+  test("removes the managed block and generated shell files", async () => {
+    const installed = await installShellIntegration("zsh");
+    expect(installed.updated).toBe(true);
+
+    const removed = await removeShellIntegration("zsh");
+    expect(removed.updated).toBe(true);
+
+    const content = await readFile(removed.path, "utf8");
+    expect(content).not.toContain("# >>> compleet integration >>>");
+    expect(
+      existsSync(join(xdgDir, "compleet", "shell", "zsh", "init.zsh"))
+    ).toBe(false);
+    expect(
+      existsSync(join(xdgDir, "compleet", "shell", "zsh", "completions", "_tc"))
+    ).toBe(false);
+    expect(await isShellIntegrationInstalled("zsh")).toBe(false);
+  });
+});
+
+describe("installShellIntegration(bash)", () => {
+  const originalHome = process.env.HOME;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  let sandboxDir = "";
+  let xdgDir = "";
+
+  beforeEach(async () => {
+    sandboxDir = await mkdtemp(join(tmpdir(), "compleet-bashrc-"));
+    xdgDir = join(sandboxDir, "xdg");
+    process.env.HOME = sandboxDir;
+    process.env.XDG_CONFIG_HOME = xdgDir;
+  });
+
+  afterEach(async () => {
+    if (originalHome === undefined) {
+      Reflect.deleteProperty(process.env, "HOME");
+    } else {
+      process.env.HOME = originalHome;
+    }
+
+    if (originalXdgConfigHome === undefined) {
+      Reflect.deleteProperty(process.env, "XDG_CONFIG_HOME");
+    } else {
+      process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+
+    if (sandboxDir) {
+      await rm(sandboxDir, { recursive: true, force: true });
+    }
+  });
+
+  test("writes a small rc loader and stores a single init script", async () => {
     const first = await installShellIntegration("bash");
     expect(first.updated).toBe(true);
     expect(first.path).toBe(join(sandboxDir, ".bashrc"));
 
-    const firstContent = await readFile(first.path, "utf8");
-    expect(firstContent).toContain("# >>> tcomp integration >>>");
-    expect(firstContent).toContain("# tcomp bash integration");
-    expect(firstContent).toContain("_tcomp_find_bin");
-    expect(firstContent).toContain("# <<< tcomp integration <<<");
+    const rcContent = await readFile(first.path, "utf8");
+    expect(rcContent).toContain("# >>> compleet integration >>>");
+    expect(rcContent).toContain(". '");
+    expect(rcContent).not.toContain("_tc_find_bin");
+
+    const initPath = join(xdgDir, "compleet", "shell", "bash", "init.bash");
+    const initContent = await readFile(initPath, "utf8");
+    expect(initContent).toContain("# Compleet bash integration");
+    expect(initContent).toContain("_tc_find_bin");
+    expect(initContent).not.toContain("_TC_COMPLETION_FILE=");
 
     const second = await installShellIntegration("bash");
     expect(second.updated).toBe(false);
-
-    const secondContent = await readFile(second.path, "utf8");
-    expect(secondContent).toBe(firstContent);
+    expect(await readFile(second.path, "utf8")).toBe(rcContent);
   });
 
-  test("replaces existing managed block in place", async () => {
-    const bashrcPath = join(sandboxDir, ".bashrc");
-    await writeFile(
-      bashrcPath,
-      [
-        'export PATH="$HOME/bin:$PATH"',
-        "# >>> tcomp integration >>>",
-        "echo legacy block",
-        "# <<< tcomp integration <<<",
-        "",
-      ].join("\n"),
-      "utf8"
-    );
-
-    const result = await installShellIntegration("bash");
-    expect(result.updated).toBe(true);
-
-    const content = await readFile(bashrcPath, "utf8");
-    expect(content).toContain('export PATH="$HOME/bin:$PATH"');
-    expect(content).toContain("# tcomp bash integration");
-
-    const startMatches = content.match(/# >>> tcomp integration >>>/g) ?? [];
-    const endMatches = content.match(/# <<< tcomp integration <<</g) ?? [];
-    expect(startMatches.length).toBe(1);
-    expect(endMatches.length).toBe(1);
-  });
-
-  test("detects installation markers", async () => {
+  test("detects installation markers and the init script", async () => {
     expect(await isShellIntegrationInstalled("bash")).toBe(false);
     await installShellIntegration("bash");
     expect(await isShellIntegrationInstalled("bash")).toBe(true);
+  });
+
+  test("removes the managed block and generated shell files", async () => {
+    const installed = await installShellIntegration("bash");
+    expect(installed.updated).toBe(true);
+
+    const removed = await removeShellIntegration("bash");
+    expect(removed.updated).toBe(true);
+
+    const content = await readFile(removed.path, "utf8");
+    expect(content).not.toContain("# >>> compleet integration >>>");
+    expect(
+      existsSync(join(xdgDir, "compleet", "shell", "bash", "init.bash"))
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(xdgDir, "compleet", "shell", "bash", "completions", "tc.bash")
+      )
+    ).toBe(false);
+    expect(await isShellIntegrationInstalled("bash")).toBe(false);
   });
 });

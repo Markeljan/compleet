@@ -3,5 +3,17 @@
   "extends": ["ultracite/biome/core"],
   "javascript": {
     "globals": ["Bun", "BUILD_VERSION", "BUILD_TIME"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["voice/recordAudio.ts", "voice/voiceMode.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
+    }
+  ]
 }

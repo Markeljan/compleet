@@ -1,8 +1,8 @@
 {
-  "name": "terminal-complete",
+  "name": "compleet",
   "version": "0.4.2",
-  "description": "AI-powered terminal command generator CLI (Bun)",
-  "homepage": "https://github.com/Markeljan/terminal-complete#readme",
+  "description": "AI prompt compiler CLI with voice input (Bun)",
+  "homepage": "https://compleet.sh",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Markeljan/terminal-complete.git"
@@ -29,27 +29,33 @@
   "files": [
     "bin/",
     "src/",
+    "voice/",
     "README.md",
     "LICENSE"
   ],
   "bin": {
-    "terminal-complete": "bin/tcomp.cjs",
-    "tcomp": "bin/tcomp.cjs"
+    "tc": "bin/tc.cjs",
+    "compleet": "bin/tc.cjs"
   },
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "bun run build.ts",
+    "export": "bun run build.ts --export",
     "smoke": "bun run src/cli.ts --help",
+    "smoke:dist": "bun run build && ./dist/tc --help",
     "check": "ultracite check",
+    "typecheck": "bun tsc",
     "fix": "ultracite fix",
     "test": "bun test",
-    "ci": "bun run check && bun test",
+    "ci": "bun run check && bun tsc && bun test",
     "prepublishOnly": "bun run ci",
     "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.0",
+    "@types/bun": "^1.3.10",
     "lefthook": "^2.1.2",
+    "typescript": "^5",
     "ultracite": "7.2.4"
   }
 }

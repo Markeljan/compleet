@@ -8,5 +8,5 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "build.ts"]
+  "include": ["src/**/*.ts", "voice/**/*.ts", "test/**/*.ts", "build.ts"]
 }

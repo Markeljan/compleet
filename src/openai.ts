@@ -53,7 +53,7 @@ export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
     const apiKey = stored.openaiApiKey?.trim();
     if (!apiKey) {
       throw new Error(
-        'OpenAI API key is missing. Run "tcomp config openai" or "tcomp setup".'
+        'OpenAI API key is missing. Run "tc config openai" or "tc setup".'
       );
     }
 
@@ -71,7 +71,7 @@ export async function resolveRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
     };
   }
 
-  throw new Error('Setup is required before using tcomp. Run "tcomp setup".');
+  throw new Error('Setup is required before using tc. Run "tc setup".');
 }
 
 function normalizeContent(
@@ -241,7 +241,7 @@ async function requestCodexResponses(
     const errorMessage = json?.error?.message ?? text;
     if (response.status === 401 || response.status === 403) {
       throw new Error(
-        `Codex auth failed (${response.status}). Run "tcomp config codex" or "tcomp setup", then try again.`
+        `Codex auth failed (${response.status}). Run "tc config codex" or "tc setup", then try again.`
       );
     }
     throw new Error(`Codex API error (${response.status}): ${errorMessage}`);
@@ -492,7 +492,10 @@ export async function generateSuggestion(
       systemPrompt,
       userPrompt
     );
-    if (process.env.TCOMP_DEBUG_RAW === "1") {
+    if (
+      process.env.TC_DEBUG_RAW === "1" ||
+      process.env.TCOMP_DEBUG_RAW === "1"
+    ) {
       console.error("DEBUG raw codex response:");
       console.error(raw);
     }

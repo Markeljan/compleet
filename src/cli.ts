@@ -1,30 +1,39 @@
 #!/usr/bin/env bun
+import { rm } from "node:fs/promises";
 import { basename } from "node:path";
+import { ensureVoiceModeReady, isVoiceModeReady } from "../voice/setup";
+import { runVoiceMode } from "../voice/voiceMode";
 import {
   ArgParseError,
   type ConfigModeArgs,
   helpText,
   type ParsedArgs,
   parseArgs,
-  type SetupModeArgs,
   type UseModeArgs,
 } from "./args";
 import { loadCodexChatGPTAuth, runCodexCliAuthAction } from "./codex-auth";
+import type { SelectOption } from "./interactive";
 import {
   askLine,
   canPromptInteractively,
   confirm,
-  type SelectOption,
   selectWithArrows,
 } from "./interactive";
 import { generatePromptResponse, generateSuggestion } from "./openai";
+import { buildProviderSelectionOptions } from "./setup-flow";
 import { isSupportedShell, type SupportedShell } from "./shell";
 import {
   installShellIntegration,
   isShellIntegrationInstalled,
+  removeShellIntegration,
 } from "./shell-install";
 import type { ProviderName, RuntimeContext, Suggestion } from "./types";
-import { loadUserConfig, saveUserConfig } from "./user-config";
+import {
+  getUserConfigDir,
+  getUserConfigPath,
+  loadUserConfig,
+  saveUserConfig,
+} from "./user-config";
 import { APP_BUILD_TIME, VERSION } from "./version";
 
 const COLOR_ENABLED =
@@ -121,7 +130,7 @@ function colorizeHelp(text: string): string {
       if (HELP_HEADER_REGEX.test(line)) {
         return heading(line);
       }
-      if (line.startsWith("  tcomp ")) {
+      if (line.startsWith("  tc ")) {
         return commandText(line);
       }
       if (line.trimStart().startsWith("--")) {
@@ -137,8 +146,8 @@ function printSuggestionHuman(suggestion: Suggestion, explain: boolean) {
     const reason = suggestion.explanation || "No command could be generated.";
     printFailure(reason);
     printInfo(
-      `For general prompts, use ${commandText("tcomp --prompt <question>")} (or ${commandText(
-        "tcomp -p <question>"
+      `For general prompts, use ${commandText("tc --prompt <question>")} (or ${commandText(
+        "tc -p <question>"
       )}).`
     );
     process.exit(2);
@@ -184,16 +193,6 @@ function defaultProvider(
     return config.activeProvider;
   }
   return "codex";
-}
-
-async function chooseProvider(current: ProviderName): Promise<ProviderName> {
-  const options: SelectOption<ProviderName>[] = [
-    { label: "OpenAI OAuth (via Codex CLI)", value: "codex" },
-    { label: "OpenAI API key", value: "openai" },
-  ];
-
-  const defaultIndex = current === "openai" ? 1 : 0;
-  return await selectWithArrows("Select provider:", options, defaultIndex);
 }
 
 type OAuthLoginMethod = "browser" | "device";
@@ -274,45 +273,112 @@ async function maybeOfferShellInstall(
   }
 
   const shellInstalled = await isShellIntegrationInstalled(setupShell);
-  if (shellInstalled) {
-    return;
-  }
-
   const shouldInstallShell = await confirm(
-    `Install ${setupShell} shell integration + completions now?`,
+    `${
+      shellInstalled ? "Refresh" : "Install"
+    } ${setupShell} shell integration now?`,
     true
   );
 
   if (!shouldInstallShell) {
-    printWarning("Skipped shell integration install.");
+    printWarning(
+      `Skipped shell integration ${shellInstalled ? "refresh" : "install"}.`
+    );
     return;
   }
 
   const installResult = await installShellIntegration(setupShell);
   const installMessage = installResult.updated
-    ? `Installed tcomp shell integration in ${installResult.path}`
-    : `tcomp shell integration already installed in ${installResult.path}`;
+    ? `Installed tc shell integration in ${installResult.path}`
+    : `tc shell integration already installed in ${installResult.path}`;
   printSuccess(installMessage);
   printSourceInstructions(installResult.path);
+}
+
+async function maybeOfferVoiceSetup(): Promise<void> {
+  if (!canPromptInteractively()) {
+    return;
+  }
+
+  if (await isVoiceModeReady()) {
+    printSuccess("Voice mode is already ready.");
+    return;
+  }
+
+  const shouldSetupVoice = await confirm(
+    "Set up voice mode now? This checks ffmpeg and transcription backends.",
+    true
+  );
+  if (!shouldSetupVoice) {
+    printWarning(
+      "Skipped voice setup for now. Run tc voice later to finish it."
+    );
+    return;
+  }
+
+  await ensureVoiceModeReady((message) => {
+    console.log(message);
+  });
+  printSuccess("Voice mode is ready.");
+}
+
+async function runProviderSetupStep(
+  config: Awaited<ReturnType<typeof loadUserConfig>>,
+  explicitProvider?: ProviderName
+): Promise<{ activeProvider: ProviderName; code: number }> {
+  const configuredProvider = await resolveConfiguredProvider(config);
+
+  if (explicitProvider) {
+    return {
+      activeProvider: explicitProvider,
+      code: await runProviderSetup(explicitProvider),
+    };
+  }
+
+  const { defaultIndex, options: providerOptions } =
+    buildProviderSelectionOptions(defaultProvider(config), configuredProvider);
+  const selection = await selectWithArrows(
+    "Select provider:",
+    providerOptions,
+    defaultIndex
+  );
+
+  if (selection === "skip") {
+    const activeProvider = configuredProvider ?? defaultProvider(config);
+    if (configuredProvider && config.activeProvider !== configuredProvider) {
+      const path = await saveUserConfig({
+        ...config,
+        activeProvider: configuredProvider,
+      });
+      printSuccess(
+        `Keeping existing provider "${configuredProvider}" in ${path}`
+      );
+    } else if (configuredProvider) {
+      printSuccess(`Keeping existing provider "${configuredProvider}"`);
+    }
+
+    return {
+      activeProvider,
+      code: 0,
+    };
+  }
+
+  return {
+    activeProvider: selection,
+    code: await runProviderSetup(selection),
+  };
 }
 
 async function runSetupFlow(options: {
   showWelcome: boolean;
   provider?: ProviderName;
-  legacyAlias?: SetupModeArgs["legacyAlias"];
   offerShellInstall?: boolean;
 }): Promise<number> {
   if (!canPromptInteractively()) {
     printFailure(
-      `Setup requires an interactive terminal. Run ${commandText("tcomp setup")} in a TTY.`
+      `Setup requires an interactive terminal. Run ${commandText("tc setup")} in a TTY.`
     );
     return 1;
-  }
-
-  if (options.legacyAlias) {
-    printWarning(
-      `"${options.legacyAlias}" has been replaced by ${commandText("tcomp setup")}.`
-    );
   }
 
   const requirementErrors = setupRequirementErrors();
@@ -332,7 +398,7 @@ async function runSetupFlow(options: {
   }
 
   if (options.showWelcome) {
-    console.log(heading("tcomp setup"));
+    console.log(heading("tc setup"));
     printInfo(
       `Welcome. Setup configures provider auth and optional ${setupShell} integration.`
     );
@@ -341,13 +407,43 @@ async function runSetupFlow(options: {
   await maybeOfferShellInstall(setupShell, options.offerShellInstall !== false);
 
   const config = await loadUserConfig();
-  const provider =
-    options.provider ?? (await chooseProvider(defaultProvider(config)));
-  const code = await runProviderSetup(provider);
+  const { activeProvider, code } = await runProviderSetupStep(
+    config,
+    options.provider
+  );
+
   if (code === 0) {
-    printSuccess(`Setup complete. Active provider: ${providerLabel(provider)}`);
+    await maybeOfferVoiceSetup();
+    printSuccess(
+      `Setup complete. Active provider: ${providerLabel(activeProvider)}`
+    );
   }
   return code;
+}
+
+async function resolveConfiguredProvider(
+  config: Awaited<ReturnType<typeof loadUserConfig>>
+): Promise<ProviderName | null> {
+  const openaiConfigured = Boolean(config.openaiApiKey?.trim());
+  const codexConfigured = await isCodexConfigured();
+
+  if (config.activeProvider === "codex" && codexConfigured) {
+    return "codex";
+  }
+
+  if (config.activeProvider === "openai" && openaiConfigured) {
+    return "openai";
+  }
+
+  if (codexConfigured) {
+    return "codex";
+  }
+
+  if (openaiConfigured) {
+    return "openai";
+  }
+
+  return null;
 }
 
 async function hasCompletedSetup(): Promise<boolean> {
@@ -403,7 +499,8 @@ async function handleConfigCommand(args: ConfigModeArgs): Promise<number> {
   const openaiConfigured = Boolean(config.openaiApiKey?.trim());
   const codexConfigured = await isCodexConfigured();
 
-  console.log(heading("tcomp config"));
+  console.log(heading("tc config"));
+  console.log(`${label("Config file:")} ${getUserConfigPath()}`);
   console.log(`${label("Active provider:")} ${commandText(activeProvider)}`);
   console.log(
     `${label("OpenAI OAuth:")} ${codexConfigured ? statusOk("configured") : statusWarn("not configured")}`
@@ -413,15 +510,70 @@ async function handleConfigCommand(args: ConfigModeArgs): Promise<number> {
   );
   console.log("");
   printInfo(
-    `Run ${commandText("tcomp config codex")} to run OpenAI OAuth setup (browser or device login).`
+    `Run ${commandText("tc config codex")} to run OpenAI OAuth setup (browser or device login).`
   );
   printInfo(
-    `Run ${commandText("tcomp config openai")} to set/update your OpenAI API key.`
+    `Run ${commandText("tc config openai")} to set/update your OpenAI API key.`
   );
   printInfo(
-    `Run ${commandText("tcomp use codex")} or ${commandText("tcomp use openai")} to switch providers.`
+    `Voice settings are stored in ${commandText(getUserConfigPath())}.`
   );
-  printInfo(`Run ${commandText("tcomp setup")} to run full onboarding again.`);
+  printInfo(
+    `Run ${commandText("tc use codex")} or ${commandText("tc use openai")} to switch providers.`
+  );
+  printInfo(`Run ${commandText("tc setup")} to run full onboarding again.`);
+  return 0;
+}
+
+async function handleResetCommand(yes: boolean): Promise<number> {
+  if (!yes) {
+    if (!canPromptInteractively()) {
+      printFailure(
+        `Reset requires confirmation. Re-run ${commandText("tc reset --yes")} in non-interactive mode.`
+      );
+      return 1;
+    }
+
+    console.log(heading("tc reset"));
+    printInfo(
+      `This removes Compleet data in ${getUserConfigDir()} and strips Compleet shell integration from supported shell rc files.`
+    );
+    printInfo("Codex auth is not touched.");
+    printInfo("Installed binaries are not removed.");
+
+    const confirmed = await confirm("Continue?", false);
+    if (!confirmed) {
+      printWarning("Reset cancelled.");
+      return 1;
+    }
+  }
+
+  const removedShellPaths: string[] = [];
+  for (const shell of ["zsh", "bash"] as const) {
+    const result = await removeShellIntegration(shell);
+    if (result.updated) {
+      removedShellPaths.push(result.path);
+    }
+  }
+
+  await rm(getUserConfigDir(), { recursive: true, force: true });
+
+  printSuccess(
+    `Removed Compleet config and voice data from ${getUserConfigDir()}`
+  );
+  if (removedShellPaths.length > 0) {
+    printSuccess(
+      `Removed Compleet shell integration from ${removedShellPaths.join(", ")}`
+    );
+    for (const path of removedShellPaths) {
+      printInfo(
+        `Reload your shell with ${commandText(`source ${path}`)} or open a new terminal session.`
+      );
+    }
+  } else {
+    printInfo("No Compleet shell integration block was found to remove.");
+  }
+  printInfo("Codex auth was left unchanged.");
   return 0;
 }
 
@@ -438,8 +590,8 @@ async function handleUseCommand(args: UseModeArgs): Promise<number> {
 
   if (args.provider === "openai" && !config.openaiApiKey?.trim()) {
     printWarning(
-      `OpenAI API key is not configured. Run ${commandText("tcomp config openai")} or ${commandText(
-        "tcomp setup"
+      `OpenAI API key is not configured. Run ${commandText("tc config openai")} or ${commandText(
+        "tc setup"
       )}.`
     );
   }
@@ -448,7 +600,7 @@ async function handleUseCommand(args: UseModeArgs): Promise<number> {
     const codexReady = await isCodexConfigured();
     if (!codexReady) {
       printWarning(
-        `Codex auth not configured yet. Run ${commandText("tcomp config codex")} if needed.`
+        `Codex auth not configured yet. Run ${commandText("tc config codex")} if needed.`
       );
     }
   }
@@ -501,7 +653,6 @@ async function main() {
     const code = await runSetupFlow({
       showWelcome: true,
       provider: args.provider,
-      legacyAlias: args.legacyAlias,
       offerShellInstall: true,
     });
     process.exit(code);
@@ -515,6 +666,18 @@ async function main() {
   if (args.mode === "use") {
     const code = await handleUseCommand(args);
     process.exit(code);
+  }
+
+  if (args.mode === "reset") {
+    const code = await handleResetCommand(args.yes);
+    process.exit(code);
+  }
+
+  if (args.mode === "voice") {
+    await ensureSetupBeforeSuggestion();
+    const context = buildRuntimeContext();
+    await runVoiceMode(context);
+    return;
   }
 
   await ensureSetupBeforeSuggestion();

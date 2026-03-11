@@ -3,28 +3,43 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ProviderName } from "./types";
 
+export interface VoiceConfig {
+  audioInputDevice?: string;
+  fasterWhisperModel?: string;
+  ffmpegBin?: string;
+  openAiTranscribeModel?: string;
+  pythonBin?: string;
+  transcribeLanguage?: string;
+  transcribePrompt?: string;
+  whisperCppBin?: string;
+  whisperCppModelPath?: string;
+}
+
 export interface UserConfig {
   activeProvider?: ProviderName;
   openaiApiKey?: string;
+  voice?: VoiceConfig;
 }
 
-export function getUserConfigPath(): string {
+export function getUserConfigDir(): string {
   const home = homedir();
 
   if (process.platform === "win32") {
     const baseDir = process.env.APPDATA ?? join(home, "AppData", "Roaming");
-    return join(baseDir, "terminal-complete", "config.json");
+    return join(baseDir, "compleet");
   }
 
   const baseDir = process.env.XDG_CONFIG_HOME ?? join(home, ".config");
-  return join(baseDir, "terminal-complete", "config.json");
+  return join(baseDir, "compleet");
+}
+
+export function getUserConfigPath(): string {
+  return join(getUserConfigDir(), "config.json");
 }
 
 export async function loadUserConfig(): Promise<UserConfig> {
-  const path = getUserConfigPath();
-
   try {
-    const raw = await readFile(path, "utf8");
+    const raw = await readFile(getUserConfigPath(), "utf8");
     return parseUserConfig(raw);
   } catch (error) {
     if (isFileMissing(error)) {
@@ -38,7 +53,14 @@ export async function updateUserConfig(
   patch: Partial<UserConfig>
 ): Promise<string> {
   const current = await loadUserConfig();
-  return saveUserConfig({ ...current, ...patch });
+  return saveUserConfig({
+    ...current,
+    ...patch,
+    voice: {
+      ...current.voice,
+      ...patch.voice,
+    },
+  });
 }
 
 export async function saveUserConfig(config: UserConfig): Promise<string> {
@@ -70,23 +92,29 @@ function parseUserConfig(raw: string): UserConfig {
   }
 
   const obj = parsed as Record<string, unknown>;
-
-  let openaiApiKey: string | undefined;
-  if (typeof obj.openaiApiKey === "string") {
-    openaiApiKey = obj.openaiApiKey;
-  } else if (typeof obj.apiKey === "string") {
-    openaiApiKey = obj.apiKey;
-  }
-
-  const activeProvider =
-    normalizeProviderName(obj.activeProvider) ??
-    normalizeProviderName(obj.provider) ??
-    normalizeProviderFromAuthMethod(obj.authMethod) ??
-    (openaiApiKey ? "openai" : undefined);
+  const voiceObj =
+    obj.voice && typeof obj.voice === "object"
+      ? (obj.voice as Record<string, unknown>)
+      : null;
 
   return {
-    activeProvider,
-    openaiApiKey,
+    activeProvider: normalizeProviderName(obj.activeProvider),
+    openaiApiKey: normalizeString(obj.openaiApiKey),
+    voice: voiceObj
+      ? {
+          audioInputDevice: normalizeString(voiceObj.audioInputDevice),
+          fasterWhisperModel: normalizeString(voiceObj.fasterWhisperModel),
+          ffmpegBin: normalizeString(voiceObj.ffmpegBin),
+          openAiTranscribeModel: normalizeString(
+            voiceObj.openAiTranscribeModel
+          ),
+          pythonBin: normalizeString(voiceObj.pythonBin),
+          transcribeLanguage: normalizeString(voiceObj.transcribeLanguage),
+          transcribePrompt: normalizeString(voiceObj.transcribePrompt),
+          whisperCppBin: normalizeString(voiceObj.whisperCppBin),
+          whisperCppModelPath: normalizeString(voiceObj.whisperCppModelPath),
+        }
+      : undefined,
   };
 }
 
@@ -97,16 +125,8 @@ function normalizeProviderName(value: unknown): ProviderName | undefined {
   return undefined;
 }
 
-function normalizeProviderFromAuthMethod(
-  value: unknown
-): ProviderName | undefined {
-  if (value === "codex-oauth") {
-    return "codex";
-  }
-  if (value === "openai-api-key") {
-    return "openai";
-  }
-  return undefined;
+function normalizeString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function isFileMissing(error: unknown): boolean {

@@ -8,7 +8,6 @@ export interface SuggestModeArgs {
 }
 
 export interface SetupModeArgs {
-  legacyAlias?: "auth" | "init";
   mode: "setup";
   provider?: ProviderName;
 }
@@ -21,6 +20,15 @@ export interface ConfigModeArgs {
 export interface UseModeArgs {
   mode: "use";
   provider: ProviderName;
+}
+
+export interface VoiceModeArgs {
+  mode: "voice";
+}
+
+export interface ResetModeArgs {
+  mode: "reset";
+  yes: boolean;
 }
 
 export interface HelpModeArgs {
@@ -36,6 +44,8 @@ export type ParsedArgs =
   | SetupModeArgs
   | ConfigModeArgs
   | UseModeArgs
+  | VoiceModeArgs
+  | ResetModeArgs
   | HelpModeArgs
   | VersionModeArgs;
 
@@ -62,20 +72,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (first === "use") {
     return parseUseArgs(argv.slice(1));
   }
-  if (first === "init" || first === "auth") {
-    return parseSetupArgs(argv.slice(1), first);
+  if (first === "reset") {
+    return parseResetArgs(argv.slice(1));
+  }
+  if (first === "voice") {
+    return parseVoiceArgs(argv.slice(1));
   }
 
   const tokens = first === "suggest" ? argv.slice(1) : argv.slice();
   return parseSuggestArgs(tokens);
 }
 
-function parseSetupArgs(
-  argv: string[],
-  legacyAlias?: SetupModeArgs["legacyAlias"]
-): SetupModeArgs | HelpModeArgs {
+function parseSetupArgs(argv: string[]): SetupModeArgs | HelpModeArgs {
   if (argv.length === 0) {
-    return { mode: "setup", legacyAlias };
+    return { mode: "setup" };
   }
 
   if (
@@ -86,12 +96,10 @@ function parseSetupArgs(
   }
 
   if (argv.length === 1) {
-    return { mode: "setup", provider: parseProvider(argv[0]), legacyAlias };
+    return { mode: "setup", provider: parseProvider(argv[0]) };
   }
 
-  throw new ArgParseError(
-    "Unknown setup option. Use: tcomp setup [codex|openai]"
-  );
+  throw new ArgParseError("Unknown setup option. Use: tc setup [codex|openai]");
 }
 
 function parseConfigArgs(argv: string[]): ConfigModeArgs | HelpModeArgs {
@@ -111,7 +119,7 @@ function parseConfigArgs(argv: string[]): ConfigModeArgs | HelpModeArgs {
   }
 
   throw new ArgParseError(
-    "Unknown config option. Use: tcomp config [codex|openai]"
+    "Unknown config option. Use: tc config [codex|openai]"
   );
 }
 
@@ -124,13 +132,47 @@ function parseUseArgs(argv: string[]): UseModeArgs | HelpModeArgs {
   }
 
   if (argv.length !== 1) {
-    throw new ArgParseError("Missing provider. Use: tcomp use <codex|openai>");
+    throw new ArgParseError("Missing provider. Use: tc use <codex|openai>");
   }
 
   return {
     mode: "use",
     provider: parseProvider(argv[0]),
   };
+}
+
+function parseResetArgs(argv: string[]): ResetModeArgs | HelpModeArgs {
+  if (argv.length === 0) {
+    return { mode: "reset", yes: false };
+  }
+
+  if (
+    argv.length === 1 &&
+    (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")
+  ) {
+    return { mode: "help" };
+  }
+
+  if (argv.length === 1 && argv[0] === "--yes") {
+    return { mode: "reset", yes: true };
+  }
+
+  throw new ArgParseError("Unknown reset option. Use: tc reset [--yes]");
+}
+
+function parseVoiceArgs(argv: string[]): VoiceModeArgs | HelpModeArgs {
+  if (argv.length === 0) {
+    return { mode: "voice" };
+  }
+
+  if (
+    argv.length === 1 &&
+    (argv[0] === "-h" || argv[0] === "--help" || argv[0] === "help")
+  ) {
+    return { mode: "help" };
+  }
+
+  throw new ArgParseError("Unknown voice option. Use: tc voice");
 }
 
 function parseSuggestArgs(argv: string[]): SuggestModeArgs | HelpModeArgs {
@@ -165,7 +207,7 @@ function parseSuggestArgs(argv: string[]): SuggestModeArgs | HelpModeArgs {
   const prompt = positionals.join(" ").trim();
   if (!prompt) {
     throw new ArgParseError(
-      'Missing prompt. For general prompts, use "tcomp --prompt <question>" (or "tcomp -p <question>").'
+      'Missing prompt. For general prompts, use "tc --prompt <question>" (or "tc -p <question>").'
     );
   }
 
@@ -188,18 +230,21 @@ function parseProvider(input: string): ProviderName {
 }
 
 export function helpText(): string {
-  const name = "tcomp";
+  const name = "tc";
 
-  return `${name} - AI terminal command helper
+  return `${name} - Compleet AI prompt compiler
 
 Usage:
+  ${name} voice
   ${name} [flags] <request>
   ${name} setup [codex|openai]
   ${name} config [codex|openai]
+  ${name} reset [--yes]
   ${name} use <codex|openai>
   ${name} --help
 
 Practical examples:
+  ${name} voice
   ${name} find all .env files modified in the last 24 hours
   ${name} create a tar.gz backup of src and save it to backups/
   ${name} -e safely delete node_modules folders older than 14 days

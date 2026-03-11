@@ -1,4 +1,4 @@
-# terminal-complete
+# Compleet
 
 ## 0.4.2
 

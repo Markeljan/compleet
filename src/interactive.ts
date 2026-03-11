@@ -42,6 +42,25 @@ export async function confirm(
   prompt: string,
   defaultYes = true
 ): Promise<boolean> {
+  if (
+    canPromptInteractively() &&
+    typeof process.stdin.setRawMode === "function"
+  ) {
+    return await selectWithArrows(
+      prompt,
+      defaultYes
+        ? [
+            { label: "Yes (Recommended)", value: true },
+            { label: "No", value: false },
+          ]
+        : [
+            { label: "Yes", value: true },
+            { label: "No (Recommended)", value: false },
+          ],
+      defaultYes ? 0 : 1
+    );
+  }
+
   const suffix = defaultYes ? " [Y/n]" : " [y/N]";
   const raw = (await askLine(`${prompt}${suffix}: `)).trim().toLowerCase();
   if (!raw) {

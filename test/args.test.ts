@@ -66,11 +66,16 @@ describe("parseArgs", () => {
     }
   });
 
-  test("maps legacy setup aliases", () => {
-    const parsed = parseArgs(["auth"]);
-    expect(parsed.mode).toBe("setup");
-    if (parsed.mode === "setup") {
-      expect(parsed.legacyAlias).toBe("auth");
+  test("parses voice command", () => {
+    const parsed = parseArgs(["voice"]);
+    expect(parsed.mode).toBe("voice");
+  });
+
+  test("parses reset command", () => {
+    const parsed = parseArgs(["reset", "--yes"]);
+    expect(parsed.mode).toBe("reset");
+    if (parsed.mode === "reset") {
+      expect(parsed.yes).toBe(true);
     }
   });
 
@@ -82,6 +87,10 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["-p"])).toThrow("For general prompts");
   });
 
+  test("rejects unexpected voice arguments", () => {
+    expect(() => parseArgs(["voice", "now"])).toThrow(ArgParseError);
+  });
+
   test("throws on unknown options", () => {
     expect(() => parseArgs(["--does-not-exist", "hello"])).toThrow(
       ArgParseError
@@ -90,11 +99,13 @@ describe("parseArgs", () => {
 });
 
 describe("helpText", () => {
-  test("uses tcomp branding with practical examples", () => {
+  test("uses tc branding with practical examples", () => {
     const help = helpText();
-    expect(help).toContain("tcomp - AI terminal command helper");
-    expect(help).toContain("tcomp config [codex|openai]");
-    expect(help).toContain("tcomp use <codex|openai>");
+    expect(help).toContain("tc - Compleet AI prompt compiler");
+    expect(help).toContain("tc voice");
+    expect(help).toContain("tc config [codex|openai]");
+    expect(help).toContain("tc reset [--yes]");
+    expect(help).toContain("tc use <codex|openai>");
     expect(help).toContain("Practical examples:");
     expect(help).not.toContain("--json");
     expect(help).not.toContain("cli.js");

@@ -15,7 +15,7 @@ const result = spawnSync("bun", [cliEntrypoint, ...args], {
 if (result.error) {
   if (result.error.code === "ENOENT") {
     console.error(
-      "tcomp requires Bun runtime. Install Bun: https://bun.sh/docs/installation"
+      "Compleet requires Bun runtime. Install Bun: https://bun.sh/docs/installation"
     );
     process.exit(1);
   }
